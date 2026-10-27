@@ -1,0 +1,36 @@
+# 환경변수 · 비밀키
+.env
+.env.local
+.env*.local
+*.key
+
+# Python
+__pycache__/
+.venv/
+*.pyc
+*.egg-info/
+.ipynb_checkpoints/
+
+# Node / Next.js
+node_modules/
+.next/
+npm-debug.log*
+
+# 모델 · 데이터 · 영상 (용량 큼, 팀 드라이브로 공유)
+*.pt
+*.pth
+*.onnx
+*.safetensors
+data/
+runs/
+*.mp4
+*.avi
+*.mov
+uploads/
+outputs/
+
+# OS · 에디터
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
