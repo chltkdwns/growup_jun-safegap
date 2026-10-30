@@ -11,6 +11,11 @@ pyyaml==6.0.3            # config.yaml 읽기
 
 # 서버 (C)
 fastapi==0.162.0         # API 서버
-uvicorn==0.54.0          # FastAPI 실행 서버
+uvicorn[standard]==0.54.0  # FastAPI 실행 서버 ([standard]: WebSocket용 websockets 포함)
 python-multipart==0.0.32 # 영상 파일 업로드 받기
 pydantic==2.14.2         # schemas.py 데이터 형식 검사
+
+# 테스트·코드 스타일 (CLAUDE.md 규칙)
+pytest==9.2.0            # 단위 테스트
+black                    # 코드 포맷 (버전은 설치 후 pip freeze로 고정)
+ruff                     # 린트 (버전은 설치 후 pip freeze로 고정)
