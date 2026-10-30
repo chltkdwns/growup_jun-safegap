@@ -1,0 +1,44 @@
+# 브레이크타임 설정 파일
+# 원칙: 카메라·영상마다 바뀌거나, 실험으로 조정하는 값만 여기에 둔다.
+#       바뀌지 않는 값(COCO 클래스 번호, km/h 변환 등)은 코드 상단 상수로 둔다.
+# 튜닝은 개발용 영상으로만 한다. 평가용 영상을 보고 값을 바꾸지 않는다.
+
+paths:
+  video_dir: data/videos        # 원본 영상 폴더 (커밋 금지)
+  output_dir: outputs           # 결과 영상·JSON 폴더 (커밋 금지)
+  upload_dir: data/uploads      # API로 업로드된 영상 저장 폴더 (커밋 금지)
+
+camera:
+  hfov_deg: null                # 수평 화각(도). 블랙박스 스펙표나 AI Hub 보정값으로 채운다
+  focal_px: null                # 초점거리(px). 알면 직접 입력, null이면 hfov_deg로 계산
+  bonnet_ratio: 0.8             # 화면 위쪽에서 사용할 비율 (아래 20%는 본넷이라 잘라냄)
+
+# ---------- A. 인식 ----------
+perception:
+  model: yolo11n.pt             # 사전학습 YOLO 모델 파일 (이름은 Ultralytics 문서로 확인)
+  conf_threshold: 0.3           # 이 확신도(0~1) 미만의 박스는 버림 (초기값, 개발용 영상으로 조정)
+  tracker: bytetrack.yaml       # Ultralytics 내장 트래커 설정
+  lane_trapezoid:               # 내 차선 영역. 화면 크기와 무관하게 비율(0~1)로 적는다
+    top_left: [0.45, 0.60]      # [x 비율, y 비율]
+    top_right: [0.55, 0.60]
+    bottom_right: [0.80, 0.80]
+    bottom_left: [0.20, 0.80]
+  cut_in:
+    approach_frames: 5          # 경계 쪽으로 연속 몇 프레임 다가와야 끼어들기로 볼지
+    min_approach_px: 1.0        # 이 이상 줄어야 "다가왔다"로 셈 (박스 떨림 무시용)
+
+# ---------- B. 판단 ----------
+judgment:
+  car_width_m: 1.8              # 핀홀 거리 계산에 쓰는 승용차 평균 폭(m)
+  ttc_window_frames: 20         # TTC 직선 맞추기에 쓸 최근 프레임 수
+  max_ttc_s: 10                 # 이보다 큰 TTC는 위험 없음으로 봄(초)
+  safe_gap_s: 2.0               # 안전거리 = 내 속도 × 이 시간(초)
+  ttc_warning_s: 3.0            # TTC 이하면 "경고"
+  ttc_danger_s: 1.5             # TTC 이하면 "위험"
+  level_hold_frames: 5          # 경고 단계가 몇 프레임 유지돼야 화면에 반영할지 (깜빡임 방지)
+
+# ---------- C. 통합·서비스 ----------
+api:
+  max_upload_mb: 500            # 업로드 영상 최대 크기(MB)
+  cors_origins:                 # React 개발 서버 주소 (브라우저 접근 허용 목록)
+    - http://localhost:5173
