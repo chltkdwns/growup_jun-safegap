@@ -17,5 +17,3 @@ pydantic==2.14.2         # schemas.py 데이터 형식 검사
 
 # 테스트·코드 스타일 (CLAUDE.md 규칙)
 pytest==9.2.0            # 단위 테스트
-black                    # 코드 포맷 (버전은 설치 후 pip freeze로 고정)
-ruff                     # 린트 (버전은 설치 후 pip freeze로 고정)
