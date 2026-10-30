@@ -1,0 +1,16 @@
+# 브레이크타임 백엔드 라이브러리 (Python 3.12 기준)
+# torch / torchvision은 GPU 지원 때문에 여기 넣지 않고 따로 설치한다. ENV_SETUP.md 2단계 참고.
+
+# 인식 (A)
+ultralytics==8.4.193     # YOLO 검출과 트래킹
+lap==0.5.13              # ByteTrack 트래킹이 내부에서 사용 (실행 중 자동 설치를 막기 위해 미리 설치)
+opencv-python==5.0.0.93  # 영상 읽기, 프레임 처리
+
+# 설정
+pyyaml==6.0.3            # config.yaml 읽기
+
+# 서버 (C)
+fastapi==0.162.0         # API 서버
+uvicorn==0.54.0          # FastAPI 실행 서버
+python-multipart==0.0.32 # 영상 파일 업로드 받기
+pydantic==2.14.2         # schemas.py 데이터 형식 검사
