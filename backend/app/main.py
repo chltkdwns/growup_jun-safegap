@@ -2,9 +2,10 @@ import asyncio
 import itertools
 from collections.abc import Iterator
 
-from app.schemas import LEVEL_ORDER, EventType, FrameResult, Level, SetSpeed
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
+
+from app.ui_schemas import LEVEL_ORDER, EventType, FrameResult, SetSpeed, UiLevel
 
 # ---- mock 값 ----
 # A·B 함수가 연결되면 이 상수들과 mock_box_px(), /ws의 mock 루프를 지운다.
@@ -119,7 +120,7 @@ def mock_hard_brake() -> Iterator[tuple[float, float, bool]]:
 
 def mock_level(
     distance_m: float, ttc_s: float | None, safe_distance_m: float, cut_in: bool
-) -> Level:
+) -> UiLevel:
     """TTC와 안전거리로 경고 단계를 정한다 (mock 서버용 임시 판정).
 
     사용처: ws_frames()가 매 프레임 level을 만들 때 호출한다.
@@ -129,7 +130,7 @@ def mock_level(
     주의: mock 전용. 실제 판정은 B(judgment)가 한다.
     """
     # 1단계: 위험한 조건부터 확인한다. TTC 1.5초 이하 = 위험, 3초 이하 = 경고
-    level: Level = "safe"
+    level: UiLevel = "safe"
     if ttc_s is not None and ttc_s <= MOCK_TTC_DANGER_S:
         level = "danger"
     elif ttc_s is not None and ttc_s <= MOCK_TTC_WARNING_S:
@@ -144,7 +145,7 @@ def mock_level(
     return level
 
 
-def mock_event(level: Level, cut_in: bool, rel_speed_mps: float) -> EventType | None:
+def mock_event(level: UiLevel, cut_in: bool, rel_speed_mps: float) -> EventType | None:
     """경고가 나온 이유를 고른다 (화면 배너 문구용).
 
     사용처: ws_frames()가 매 프레임 event를 만들 때 호출한다.
