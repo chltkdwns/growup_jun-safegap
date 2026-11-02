@@ -1,15 +1,15 @@
-// 경고 단계 이름·색·설명은 여기 한곳에서만 정한다. 판정(어느 단계인지)은 서버가 level로 내려준다.
+// 경고 단계 이름·색은 여기 한곳에서만 정한다. 판정(어느 단계인지)은 서버가 level로 내려준다.
 export type Level = '정상' | '주의' | '경고' | '위험'
 
 // 낮은 단계부터 높은 단계 순서. 단계가 올랐는지 비교할 때 인덱스로 쓴다.
 export const LEVEL_ORDER: Level[] = ['정상', '주의', '경고', '위험']
 
-// 단계별 표시 문구와 색. desc의 "3초", "1.5초"는 글자일 뿐이라 기준값(config.yaml)이 바뀌면 같이 고친다.
-export const LEVELS: Record<Level, { ko: string; en: string; color: string; desc: string }> = {
-  정상: { ko: '안전', en: 'SAFE', color: '#3cc983', desc: '앞차와 거리가 충분해요.' },
-  주의: { ko: '주의', en: 'CAUTION', color: '#f3c744', desc: '안전거리보다 가까워요. 조금 떨어지세요.' },
-  경고: { ko: '경고', en: 'WARNING', color: '#ff8b3d', desc: '3초 안에 부딪힐 수 있어요. 속도를 줄이세요.' },
-  위험: { ko: '위험', en: 'DANGER', color: '#ff4b55', desc: '1.5초 안에 부딪힐 수 있어요. 바로 브레이크!' },
+// 단계별 표시 문구와 색
+export const LEVELS: Record<Level, { ko: string; en: string; color: string }> = {
+  정상: { ko: '안전', en: 'SAFE', color: '#3cc983' },
+  주의: { ko: '주의', en: 'CAUTION', color: '#f3c744' },
+  경고: { ko: '경고', en: 'WARNING', color: '#ff8b3d' },
+  위험: { ko: '위험', en: 'DANGER', color: '#ff4b55' },
 }
 
 // 서버가 보내는 박스 좌표(lead_box_px)의 기준 화면 크기(px). 오버레이를 이 크기로 그려 영상 크기에 맞춰 늘린다.

@@ -14,7 +14,7 @@ export function InfoPanel({ frame }: { frame: FrameResult | null }) {
   const ttc = frame && frame.ttc_s !== null ? frame.ttc_s.toFixed(1) : '—'
   const safeDistance = frame ? frame.safe_distance_m.toFixed(1) : '—'
 
-  // 2단계: 단계 설명과 색 (경고·위험일 때 TTC 숫자에 단계 색을 입힌다)
+  // 2단계: 단계 색 (경고·위험일 때 TTC 숫자에 단계 색을 입힌다)
   const level = frame ? LEVELS[frame.level] : null
   const ttcHot = frame?.level === '경고' || frame?.level === '위험'
 
@@ -30,8 +30,6 @@ export function InfoPanel({ frame }: { frame: FrameResult | null }) {
         sub={frame && frame.ttc_s === null ? '다가오지 않음' : undefined}
       />
       <Metric label="안전거리" value={safeDistance} unit="m" sub="내 속도 × 2초" />
-      {/* 3단계: 단계 설명 한 줄 */}
-      <p className="info-desc">{level ? level.desc : ''}</p>
     </div>
   )
 }

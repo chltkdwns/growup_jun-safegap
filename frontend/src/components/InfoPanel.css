@@ -33,10 +33,3 @@
   font-size: 12px;
   color: var(--faint);
 }
-
-/* 단계 설명은 네 칸 아래 전체 폭을 쓴다 */
-.info-desc {
-  grid-column: 1 / -1;
-  font-size: 14px;
-  min-height: 1.4em;
-}
