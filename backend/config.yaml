@@ -30,7 +30,7 @@ perception:
 # ---------- B. 판단 ----------
 judgment:
   car_width_m: 1.8              # 핀홀 거리 계산에 쓰는 승용차 평균 폭(m)
-  ttc_window_frames: 20         # TTC 직선 맞추기에 쓸 최근 프레임 수
+  ttc_window_s: 0.7         # TTC 직선 맞추기에 쓸 최근 프레임 수
   max_ttc_s: 10                 # 이보다 큰 TTC는 위험 없음으로 봄(초)
   safe_gap_s: 2.0               # 안전거리 = 내 속도 × 이 시간(초)
   ttc_warning_s: 3.0            # TTC 이하면 "경고"
@@ -42,3 +42,12 @@ api:
   max_upload_mb: 500            # 업로드 영상 최대 크기(MB)
   cors_origins:                 # React 개발 서버 주소 (브라우저 접근 허용 목록)
     - http://localhost:5173
+
+
+# ---------- KITTI tracking (B 검증용) ----------
+kitti:
+  root: data/kitti/training     # image_02, label_02, calib, oxts가 있는 폴더 (backend 기준)
+  fps: 10                       # KITTI 카메라 프레임 속도
+  lane_half_width_m: 1.8        # 정답 3D 위치로 앞차를 고를 때, 내 차선으로 볼 좌우 폭의 절반(m)
+
+  

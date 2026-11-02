@@ -16,7 +16,8 @@ class FrameJudge:
     def __init__(self, cfg_judgment: dict, fps: float, focal_px: float):
         self.cfg = cfg_judgment
         self.focal_px = focal_px
-        self.ttc = TTCEstimator(fps, cfg_judgment["ttc_window_frames"], cfg_judgment["max_ttc_s"])
+        window_frames = max(3, round(cfg_judgment["ttc_window_s"] * fps))  # 초 → 프레임 수
+        self.ttc = TTCEstimator(fps, window_frames, cfg_judgment["max_ttc_s"])
         self.stabilizer = LevelStabilizer(cfg_judgment["level_hold_frames"])
         self.lead_id = None   # 지금 따라가고 있는 앞차 ID
 
