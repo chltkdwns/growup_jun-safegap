@@ -22,6 +22,9 @@ class FrameJudge:
         self.stabilizer = LevelStabilizer(cfg_judgment["level_hold_frames"])
         self.lead_id = None   # 지금 따라가고 있는 앞차 ID
         self.lead_box = None  # 직전 프레임의 앞차 박스 (id가 바뀌어도 같은 차인지 확인용)
+        self.max_missing_frames = round(cfg_judgment["max_missing_s"] * fps)  # 앞차를 놓쳐도 버틸 프레임 수
+        self.missing_frames = 0  # 지금까지 연속으로 앞차를 놓친 프레임 수
+        self.last_out = None     # 마지막으로 앞차가 있었던 프레임의 결과
 
     def _is_same_car(self, new_id: int | None, new_box: list | None) -> bool:
         """이번 앞차가 직전 앞차와 같은 차인지 판단한다.
@@ -44,6 +47,13 @@ class FrameJudge:
         출력: {"frame", "speed_kmh", "distance_m", "ttc_s", "level"}
         """
         lead = perception["lead"]
+        
+        # 0) 앞차를 잠깐(max_missing_s 이내) 놓치면 직전 결과를 유지 (검출이 1~2프레임 끊기는 경우)
+        if lead is None and self.last_out is not None and self.missing_frames < self.max_missing_frames:
+            self.missing_frames += 1
+            return dict(self.last_out, frame=perception["frame"], speed_kmh=speed_kmh)
+        self.missing_frames = 0
+        
         # 1) 앞차가 바뀌거나 사라지면 이전 차의 기록을 버림
         new_id = lead["id"] if lead else None
         new_box = lead["box"] if lead else None
@@ -67,10 +77,12 @@ class FrameJudge:
         )
         level = self.stabilizer.update(raw_level)
 
-        return {
+        out = {
             "frame": perception["frame"],
             "speed_kmh": speed_kmh,
             "distance_m": None if distance_m is None else round(distance_m, 1),
             "ttc_s": None if ttc_s is None else round(float(ttc_s), 2),
             "level": level,
         }
+        self.last_out = out if lead else None  # 앞차가 있을 때만 "유지할 결과"로 기억
+        return out

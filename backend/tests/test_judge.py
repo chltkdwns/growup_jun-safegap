@@ -48,3 +48,24 @@ def test_no_lead_is_normal():
     judge = make_judge()
     out = judge.judge_frame(dict(load("approach")[0], lead=None), speed_kmh=100)
     assert out["distance_m"] is None and out["level"] == "정상"
+
+
+def test_short_miss_keeps_last_result():
+    """앞차를 1프레임 놓침 → 직전 결과 유지, 다시 잡히면 TTC 이어짐"""
+    judge = make_judge()
+    rows = load("approach")
+    outs = [judge.judge_frame(row, speed_kmh=None) for row in rows[:40]]
+    missed = judge.judge_frame(dict(rows[40], lead=None), speed_kmh=None)
+    assert missed["ttc_s"] == outs[-1]["ttc_s"] and missed["level"] == outs[-1]["level"]
+    assert judge.judge_frame(rows[41], speed_kmh=None)["ttc_s"] is not None
+
+
+def test_long_miss_resets():
+    """max_missing_s보다 오래 놓침 → 앞차 없음(정상)으로 처리"""
+    judge = make_judge()
+    rows = load("approach")
+    for row in rows[:40]:
+        judge.judge_frame(row, speed_kmh=None)
+    n = round(load_config()["judgment"]["max_missing_s"] * FPS)
+    outs = [judge.judge_frame(dict(rows[40 + i], lead=None), speed_kmh=None) for i in range(n + 1)]
+    assert outs[-1]["distance_m"] is None and outs[-1]["level"] == "정상"
