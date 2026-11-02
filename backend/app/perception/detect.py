@@ -31,23 +31,32 @@ def crop_hood(frame: np.ndarray, hood_ratio: float) -> np.ndarray:
 
 
 def track_vehicles(
-    model: YOLO, frame: np.ndarray, conf_threshold: float, tracker: str
+    model: YOLO,
+    frame: np.ndarray,
+    conf_threshold: float,
+    tracker: str,
+    nms_iou: float,
 ) -> dict[int, list[float]]:
     """한 프레임에서 차량을 검출하고 트래킹 ID를 붙인다.
 
     사용처: A(인식) 단계. pipeline.analyze_video()가 매 프레임 호출한다.
     입력: model YOLO 모델, frame 본넷을 자른 BGR 이미지,
-          conf_threshold 검출 신뢰도 최소값 (0~1), tracker 트래커 설정 파일 이름
+          conf_threshold 검출 신뢰도 최소값 (0~1), tracker 트래커 설정 파일 이름,
+          nms_iou 겹친 박스 중복 제거 기준 (0~1, config)
     출력: {트래킹 ID: [x1, y1, x2, y2] (px)}
     주의: 트래커가 아직 ID를 붙이지 않은 박스는 결과에서 빠진다.
+          nms_iou가 너무 낮으면 바짝 붙은 서로 다른 차도 하나로 합쳐질 수 있다.
     """
     # persist=True: 이전 프레임의 트래킹 상태를 이어서 써서 같은 차에 같은 ID를 붙인다
+    # agnostic_nms=True: 같은 차를 car/truck 두 클래스로 잡은 중복 박스도 하나로 합친다
     result = model.track(
         frame,
         persist=True,
         tracker=tracker,
         classes=VEHICLE_CLASS_IDS,
         conf=conf_threshold,
+        iou=nms_iou,
+        agnostic_nms=True,
         verbose=False,
     )[0]
     if result.boxes.id is None:

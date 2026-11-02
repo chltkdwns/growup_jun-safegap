@@ -1,8 +1,6 @@
 """끼어들기 판단."""
 
-import numpy as np
-
-from app.perception.lane import bottom_center, signed_distance_px
+from app.perception.lateral import lateral_offset_m
 
 
 class CutInDetector:
@@ -11,47 +9,79 @@ class CutInDetector:
     차마다 이전 프레임 위치를 기억해야 해서 클래스로 만들었다.
     """
 
-    def __init__(self, approach_frames: int) -> None:
+    def __init__(
+        self,
+        approach_frames: int,
+        car_width_m: float,
+        lane_half_width_m: float,
+        zone_m: float,
+        move_m: float,
+        min_box_w_px: float,
+    ) -> None:
         """사용처: pipeline.analyze_video()가 영상 하나에 한 번 만든다.
 
-        입력: approach_frames 끼어들기로 볼 연속 접근 프레임 수 N (config의 cut_in_frames)
+        입력: approach_frames 끼어들기로 볼 연속 프레임 수 N (config의 cut_in_frames),
+              car_width_m 가정 차폭 (m), lane_half_width_m 내 차선 반폭 (m),
+              zone_m 차선 바깥 이 거리(m) 안의 차만 끼어들기 후보 (config의 cut_in_zone_m),
+              move_m N프레임 동안 안쪽으로 이만큼(m) 이상 다가와야 끼어들기 (config의 cut_in_move_m),
+              min_box_w_px 이보다 폭이 작은 먼 차는 판단하지 않는다 (px, config의 cut_in_min_box_w_px)
         """
         self.approach_frames = approach_frames
-        self._prev_distance_px: dict[int, float] = {}  # 차별 직전 프레임의 경계 거리
-        self._approach_count: dict[int, int] = {}  # 차별 연속 접근 프레임 수
+        self.car_width_m = car_width_m
+        self.lane_half_width_m = lane_half_width_m
+        self.zone_m = zone_m
+        self.move_m = move_m
+        self.min_box_w_px = min_box_w_px
+        self._offset_history: dict[int, list[float]] = {}  # 차별 최근 옆 거리(m) 기록
 
-    def update(self, tracks: dict[int, list[float]], trapezoid_px: np.ndarray) -> bool:
-        """이번 프레임에 끼어들기가 있는지 판단하고 차별 상태를 갱신한다.
+    def update(
+        self, tracks: dict[int, list[float]], center_x_px: float, frame_w_px: int
+    ) -> bool:
+        """이번 프레임에 끼어들기가 있는지 판단하고 차별 기록을 갱신한다.
 
         사용처: A(인식) 단계. pipeline.perceive_frame()이 매 프레임 호출한다.
-        입력: tracks {트래킹 ID: [x1, y1, x2, y2] (px)}, trapezoid_px 내 차선 사다리꼴 (px)
+        입력: tracks {트래킹 ID: [x1, y1, x2, y2] (px)}, center_x_px 정면 x (px),
+              frame_w_px 프레임 너비 (px)
         출력: 끼어들기 여부
-        주의: 직전 프레임에 사다리꼴 바깥에 있던 차만 본다. 처음부터 안에 나타난 차는
-              끼어들기로 보지 않는다. 이번 프레임에 안 보인 차의 기록은 지운다.
+        주의: 직전 프레임에 차선 바깥에 있던 차만 본다. 이번 프레임에 안 보인 차의 기록은 지운다.
+              화면 끝에서 잘린 박스와 폭이 작은 먼 박스는 옆 거리가 흔들려서 보지 않는다.
         """
         cut_in = False
-        new_distance: dict[int, float] = {}
-        new_count: dict[int, int] = {}
+        new_history: dict[int, list[float]] = {}
 
         for track_id, box in tracks.items():
-            distance_px = signed_distance_px(bottom_center(box), trapezoid_px)
-            new_distance[track_id] = distance_px
-            prev_px = self._prev_distance_px.get(track_id)
-
-            # 직전 위치를 모르거나 이미 안에 있던 차는 판단하지 않는다
-            if prev_px is None or prev_px >= 0:
-                new_count[track_id] = 0
+            box_w_px = box[2] - box[0]
+            # 잘린 박스와 작은 박스는 폭이 조금만 흔들려도 옆 거리가 크게 변해서 판단에서 뺀다
+            if box[0] <= 0 or box[2] >= frame_w_px or box_w_px < self.min_box_w_px:
+                continue
+            offset_m = lateral_offset_m(box, center_x_px, self.car_width_m)
+            # 최근 N+1프레임의 옆 거리만 남긴다 (처음과 지금 사이가 N프레임)
+            history = (self._offset_history.get(track_id, []) + [offset_m])[
+                -(self.approach_frames + 1) :
+            ]
+            new_history[track_id] = history
+            if len(history) < 2:
                 continue
 
-            # 경계 쪽으로 다가오면 연속 횟수를 늘리고, 아니면 0으로 되돌린다
-            approaching = distance_px > prev_px
-            new_count[track_id] = self._approach_count.get(track_id, 0) + 1 if approaching else 0
-
-            # 경계를 넘었거나 N프레임 연속으로 다가오면 끼어들기로 본다
-            crossed = distance_px >= 0
-            if crossed or new_count[track_id] >= self.approach_frames:
+            prev_m = history[-2]
+            # 직전엔 차선 바깥, 지금은 차선 안(같은 쪽)이면 경계를 넘어 들어온 것이다
+            crossed = (
+                abs(prev_m) > self.lane_half_width_m >= abs(offset_m) and prev_m * offset_m > 0
+            )
+            # N프레임 전엔 차선 바로 바깥(zone_m 이내)이었고, 같은 쪽에서 move_m 이상 다가왔으며
+            # 마지막 프레임도 계속 다가오는 중이면 끼어드는 중이다
+            approaching = False
+            if len(history) == self.approach_frames + 1:
+                start_m = history[0]
+                in_zone = self.lane_half_width_m < abs(start_m) <= self.lane_half_width_m + self.zone_m
+                approaching = (
+                    start_m * offset_m > 0
+                    and in_zone
+                    and abs(start_m) - abs(offset_m) >= self.move_m
+                    and abs(prev_m) - abs(offset_m) > 0
+                )
+            if crossed or approaching:
                 cut_in = True
 
-        self._prev_distance_px = new_distance
-        self._approach_count = new_count
+        self._offset_history = new_history
         return cut_in

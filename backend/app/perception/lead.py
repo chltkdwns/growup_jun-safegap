@@ -1,8 +1,6 @@
 """앞차 선정."""
 
-import numpy as np
-
-from app.perception.lane import bottom_center, signed_distance_px
+from app.perception.lateral import lateral_offset_m
 
 
 def box_area_px(box: list[float]) -> float:
@@ -16,19 +14,25 @@ def box_area_px(box: list[float]) -> float:
     return (x2 - x1) * (y2 - y1)
 
 
-def select_lead(tracks: dict[int, list[float]], trapezoid_px: np.ndarray) -> int | None:
-    """내 차선 안에 있는 차 중 가장 큰(가까운) 차를 앞차로 고른다.
+def select_lead(
+    tracks: dict[int, list[float]],
+    center_x_px: float,
+    car_width_m: float,
+    lane_half_width_m: float,
+) -> int | None:
+    """내 차선 폭 안에 있는 차 중 가장 큰(가까운) 차를 앞차로 고른다.
 
     사용처: A(인식) 단계. pipeline.perceive_frame()이 매 프레임 호출한다.
-    입력: tracks {트래킹 ID: [x1, y1, x2, y2] (px)}, trapezoid_px 내 차선 사다리꼴 (px)
+    입력: tracks {트래킹 ID: [x1, y1, x2, y2] (px)}, center_x_px 정면 x (px),
+          car_width_m 가정 차폭 (m), lane_half_width_m 내 차선 반폭 (m, config)
     출력: 앞차의 트래킹 ID, 없으면 None
-    주의: 급커브에서는 사다리꼴이 실제 차선과 어긋나 옆 차선 차를 고를 수 있다.
+    주의: 급커브에서는 앞차가 정면에서 벗어나 보여 앞차를 놓칠 수 있다.
     """
-    # 아래쪽 가운데 점이 사다리꼴 안(경계 포함)에 있는 차만 후보로 둔다
+    # 옆 거리 절댓값이 차선 반폭 이하(경계 포함)인 차만 후보로 둔다
     candidates = {
         track_id: box
         for track_id, box in tracks.items()
-        if signed_distance_px(bottom_center(box), trapezoid_px) >= 0
+        if abs(lateral_offset_m(box, center_x_px, car_width_m)) <= lane_half_width_m
     }
     if not candidates:
         return None

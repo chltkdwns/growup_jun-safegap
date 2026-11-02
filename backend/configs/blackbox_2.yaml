@@ -1,0 +1,3 @@
+# blackbox_2.mp4 (1080x1080) 카메라 값. config.yaml의 perception 값을 덮어쓴다.
+hood_ratio: 0.15       # 화면 아래 본넷 높이 비율 (0~1)
+center_x_ratio: 0.215  # 정면 x / 화면 너비. 사용자가 그린 차선의 소실점 x(약 232px)를 1080으로 나눈 값

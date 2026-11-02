@@ -1,12 +1,10 @@
 """A(인식) 전체 흐름: 영상 → 프레임별 PerceptionResult."""
 
 import cv2
-import numpy as np
 
 from app.perception.cut_in import CutInDetector
 from app.perception.debug import draw_debug
 from app.perception.detect import crop_hood, load_detector, track_vehicles
-from app.perception.lane import trapezoid_to_px
 from app.perception.lead import select_lead
 from app.schemas import LeadVehicle, PerceptionResult
 
@@ -15,19 +13,23 @@ def perceive_frame(
     tracks: dict[int, list[float]],
     frame_idx: int,
     fps: float,
-    trapezoid_px: np.ndarray,
+    center_x_px: float,
     cut_in_detector: CutInDetector,
+    frame_w_px: int,
+    car_width_m: float,
+    lane_half_width_m: float,
 ) -> PerceptionResult:
     """한 프레임의 트래킹 결과로 앞차와 끼어들기를 정해 A → B 형식으로 만든다.
 
     사용처: analyze_video()가 매 프레임 호출한다. YOLO 없이 가짜 tracks로 테스트할 수 있다.
     입력: tracks {ID: [x1, y1, x2, y2] (px)}, frame_idx 프레임 번호, fps 초당 프레임 수,
-          trapezoid_px 내 차선 사다리꼴 (px), cut_in_detector 영상 단위로 만든 판단기
+          center_x_px 정면 x (px), cut_in_detector 영상 단위로 만든 판단기,
+          frame_w_px 프레임 너비 (px), car_width_m 가정 차폭 (m), lane_half_width_m 차선 반폭 (m)
     출력: PerceptionResult
     """
-    lead_id = select_lead(tracks, trapezoid_px)
+    lead_id = select_lead(tracks, center_x_px, car_width_m, lane_half_width_m)
     lead = LeadVehicle(id=lead_id, box=tracks[lead_id]) if lead_id is not None else None
-    cut_in = cut_in_detector.update(tracks, trapezoid_px)
+    cut_in = cut_in_detector.update(tracks, center_x_px, frame_w_px)
     return PerceptionResult(frame=frame_idx, time=frame_idx / fps, lead=lead, cut_in=cut_in)
 
 
@@ -51,8 +53,20 @@ def analyze_video(
     frame_w_px = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_h_px = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    trapezoid_px = trapezoid_to_px(perception_cfg["lane_trapezoid"], frame_w_px, frame_h_px)
-    cut_in_detector = CutInDetector(perception_cfg["cut_in_frames"])
+    # 카메라마다 다른 본넷 높이와 정면 위치는 config(카메라 설정 파일로 덮어쓰기)에서 읽는다
+    hood_ratio = perception_cfg["hood_ratio"]
+    hood_y_px = int(frame_h_px * (1 - hood_ratio))
+    center_x_px = perception_cfg["center_x_ratio"] * frame_w_px
+    car_width_m = perception_cfg["car_width_m"]
+    lane_half_width_m = perception_cfg["lane_half_width_m"]
+    cut_in_detector = CutInDetector(
+        perception_cfg["cut_in_frames"],
+        car_width_m,
+        lane_half_width_m,
+        perception_cfg["cut_in_zone_m"],
+        perception_cfg["cut_in_move_m"],
+        perception_cfg["cut_in_min_box_w_px"],
+    )
 
     writer = None
     if debug_video_path is not None:
@@ -67,16 +81,33 @@ def analyze_video(
             break
 
         # 검출 → 앞차·끼어들기 판단 순서로 한 프레임을 처리한다
-        cropped = crop_hood(frame, perception_cfg["hood_ratio"])
+        cropped = crop_hood(frame, hood_ratio)
         tracks = track_vehicles(
-            model, cropped, perception_cfg["conf_threshold"], perception_cfg["tracker"]
+            model,
+            cropped,
+            perception_cfg["conf_threshold"],
+            perception_cfg["tracker"],
+            perception_cfg["nms_iou"],
         )
-        result = perceive_frame(tracks, frame_idx, fps, trapezoid_px, cut_in_detector)
+        result = perceive_frame(
+            tracks,
+            frame_idx,
+            fps,
+            center_x_px,
+            cut_in_detector,
+            frame_w_px,
+            car_width_m,
+            lane_half_width_m,
+        )
         results.append(result)
 
         if writer is not None:
             lead_id = result.lead.id if result.lead else None
-            writer.write(draw_debug(frame, tracks, trapezoid_px, lead_id, result.cut_in))
+            writer.write(
+                draw_debug(
+                    frame, tracks, center_x_px, car_width_m, lead_id, result.cut_in, hood_y_px
+                )
+            )
         frame_idx += 1
 
     cap.release()
