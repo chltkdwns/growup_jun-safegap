@@ -13,9 +13,9 @@ interface AlarmPattern {
 
 // 단계가 높을수록 높고 빠르고 많이 울린다. 안전(safe)은 소리가 없다.
 const ALARMS: Partial<Record<Level, AlarmPattern>> = {
-  caution: { freqHz: 660, wave: 'sine', count: 1, gapS: 0, durS: 0.25, volume: 0.12 },
-  warning: { freqHz: 880, wave: 'triangle', count: 2, gapS: 0.22, durS: 0.16, volume: 0.18 },
-  danger: { freqHz: 1320, wave: 'square', count: 6, gapS: 0.12, durS: 0.08, volume: 0.2 },
+  주의: { freqHz: 660, wave: 'sine', count: 1, gapS: 0, durS: 0.25, volume: 0.12 },
+  경고: { freqHz: 880, wave: 'triangle', count: 2, gapS: 0.22, durS: 0.16, volume: 0.18 },
+  위험: { freqHz: 1320, wave: 'square', count: 6, gapS: 0.12, durS: 0.08, volume: 0.2 },
 }
 
 // 삐 소리 하나를 예약한다. 소리가 딱 끊기며 "툭" 하는 잡음이 나지 않게 크기를 서서히 올렸다 내린다.

@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
-from app.ui_schemas import LEVEL_ORDER, EventType, FrameResult, SetSpeed, UiLevel
+from app.schemas import LEVEL_ORDER, EventType, FrameResult, Level, SetSpeed
 
 # ---- mock 값 ----
 # A·B 함수가 연결되면 이 상수들과 mock_box_px(), /ws의 mock 루프를 지운다.
@@ -120,32 +120,32 @@ def mock_hard_brake() -> Iterator[tuple[float, float, bool]]:
 
 def mock_level(
     distance_m: float, ttc_s: float | None, safe_distance_m: float, cut_in: bool
-) -> UiLevel:
+) -> Level:
     """TTC와 안전거리로 경고 단계를 정한다 (mock 서버용 임시 판정).
 
     사용처: ws_frames()가 매 프레임 level을 만들 때 호출한다.
     입력: distance_m 앞차 거리(m), ttc_s 충돌까지 남은 시간(초, 없으면 None), safe_distance_m 안전거리(m),
           cut_in 끼어들기 여부 (True이면 한 단계 올린다)
-    출력: 경고 단계 (safe / caution / warning / danger)
+    출력: 경고 단계 (정상 / 주의 / 경고 / 위험)
     주의: mock 전용. 실제 판정은 B(judgment)가 한다.
     """
     # 1단계: 위험한 조건부터 확인한다. TTC 1.5초 이하 = 위험, 3초 이하 = 경고
-    level: UiLevel = "safe"
+    level: Level = "정상"
     if ttc_s is not None and ttc_s <= MOCK_TTC_DANGER_S:
-        level = "danger"
+        level = "위험"
     elif ttc_s is not None and ttc_s <= MOCK_TTC_WARNING_S:
-        level = "warning"
+        level = "경고"
     # TTC는 괜찮아도 안전거리보다 가까우면 주의
     elif distance_m < safe_distance_m:
-        level = "caution"
+        level = "주의"
 
     # 2단계: 끼어들기가 있으면 한 단계 올린다 (이미 위험이면 그대로)
-    if cut_in and level != "danger":
+    if cut_in and level != "위험":
         level = LEVEL_ORDER[LEVEL_ORDER.index(level) + 1]
     return level
 
 
-def mock_event(level: UiLevel, cut_in: bool, rel_speed_mps: float) -> EventType | None:
+def mock_event(level: Level, cut_in: bool, rel_speed_mps: float) -> EventType | None:
     """경고가 나온 이유를 고른다 (화면 배너 문구용).
 
     사용처: ws_frames()가 매 프레임 event를 만들 때 호출한다.
@@ -154,7 +154,7 @@ def mock_event(level: UiLevel, cut_in: bool, rel_speed_mps: float) -> EventType 
     주의: mock 전용. 급정거는 브레이크등이 아니라 가까워지는 속도가 급히 커진 것으로 본다.
     """
     # 안전하면 알릴 이유가 없다
-    if level == "safe":
+    if level == "정상":
         return None
     # 이유가 겹치면 끼어들기, 급정거, 안전거리 부족 순서로 먼저 알린다
     if cut_in:

@@ -26,16 +26,16 @@ def test_health_returns_ok() -> None:
 def test_mock_level_boundaries() -> None:
     """TTC 3초·1.5초, 안전거리 경계값에서 단계가 정확히 바뀌는지 확인한다."""
     safe = 50.0
-    assert mock_level(60.0, 10.0, safe, False) == "safe"
+    assert mock_level(60.0, 10.0, safe, False) == "정상"
     assert (
-        mock_level(50.0, 10.0, safe, False) == "safe"
+        mock_level(50.0, 10.0, safe, False) == "정상"
     )  # 안전거리와 정확히 같으면 부족하지 않다
-    assert mock_level(49.9, 10.0, safe, False) == "caution"
-    assert mock_level(60.0, 3.01, safe, False) == "safe"
-    assert mock_level(60.0, 3.0, safe, False) == "warning"  # TTC 정확히 3초 = 경고
-    assert mock_level(60.0, 1.51, safe, False) == "warning"
-    assert mock_level(60.0, 1.5, safe, False) == "danger"  # TTC 정확히 1.5초 = 위험
-    assert mock_level(60.0, None, safe, False) == "safe"  # 가까워지지 않으면 TTC 없음
+    assert mock_level(49.9, 10.0, safe, False) == "주의"
+    assert mock_level(60.0, 3.01, safe, False) == "정상"
+    assert mock_level(60.0, 3.0, safe, False) == "경고"  # TTC 정확히 3초 = 경고
+    assert mock_level(60.0, 1.51, safe, False) == "경고"
+    assert mock_level(60.0, 1.5, safe, False) == "위험"  # TTC 정확히 1.5초 = 위험
+    assert mock_level(60.0, None, safe, False) == "정상"  # 가까워지지 않으면 TTC 없음
 
 
 def box_width(frame: dict) -> float:
@@ -92,18 +92,18 @@ def test_ws_ignores_invalid_set_speed() -> None:
 def test_mock_level_cut_in_raises_one_level() -> None:
     """끼어들기가 있으면 단계가 한 단계 오르고, 위험은 그대로인지 확인한다."""
     safe = 50.0
-    assert mock_level(60.0, 10.0, safe, True) == "caution"  # safe -> caution
-    assert mock_level(49.9, 10.0, safe, True) == "warning"  # caution -> warning
-    assert mock_level(60.0, 3.0, safe, True) == "danger"  # warning -> danger
-    assert mock_level(60.0, 1.5, safe, True) == "danger"  # 위험은 그대로
+    assert mock_level(60.0, 10.0, safe, True) == "주의"  # safe -> caution
+    assert mock_level(49.9, 10.0, safe, True) == "경고"  # caution -> warning
+    assert mock_level(60.0, 3.0, safe, True) == "위험"  # warning -> danger
+    assert mock_level(60.0, 1.5, safe, True) == "위험"  # 위험은 그대로
 
 
 def test_mock_event_priority() -> None:
     """경고 이유가 겹칠 때 끼어들기, 급정거, 안전거리 부족 순으로 고르는지 확인한다."""
-    assert mock_event("safe", True, 20.0) is None
-    assert mock_event("warning", True, 20.0) == "cut_in"
-    assert mock_event("danger", False, MOCK_HARD_BRAKE_REL_MPS) == "hard_brake"
-    assert mock_event("danger", False, MOCK_HARD_BRAKE_REL_MPS - 0.1) == "gap_short"
+    assert mock_event("정상", True, 20.0) is None
+    assert mock_event("경고", True, 20.0) == "cut_in"
+    assert mock_event("위험", False, MOCK_HARD_BRAKE_REL_MPS) == "hard_brake"
+    assert mock_event("위험", False, MOCK_HARD_BRAKE_REL_MPS - 0.1) == "gap_short"
 
 
 def test_mock_situations_cover_each_event() -> None:

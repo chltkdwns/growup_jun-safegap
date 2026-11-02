@@ -16,7 +16,7 @@ export function InfoPanel({ frame }: { frame: FrameResult | null }) {
 
   // 2단계: 단계 설명과 색 (경고·위험일 때 TTC 숫자에 단계 색을 입힌다)
   const level = frame ? LEVELS[frame.level] : null
-  const ttcHot = frame?.level === 'warning' || frame?.level === 'danger'
+  const ttcHot = frame?.level === '경고' || frame?.level === '위험'
 
   return (
     <div className="info-panel">

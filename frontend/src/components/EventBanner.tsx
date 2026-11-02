@@ -14,7 +14,7 @@ export function EventBanner({ frame }: { frame: FrameResult | null }) {
   if (!event) return null
 
   // 2단계: 색은 지금 단계를 따른다. 단계가 안전으로 내려가 문구만 남은 동안은 주의색으로 둔다
-  const color = LEVELS[frame && frame.level !== 'safe' ? frame.level : 'caution'].color
+  const color = LEVELS[frame && frame.level !== '정상' ? frame.level : '주의'].color
 
   return (
     <div className="event-banner" style={{ color, borderColor: color }}>
