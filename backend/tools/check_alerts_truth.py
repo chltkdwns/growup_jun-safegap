@@ -1,3 +1,12 @@
+"""
+요약: KITTI 정답 거리로 계산한 경고 단계와, B가 추정한 경고 단계를 프레임별로 비교한다.
+사용처: B 판단 결과 검증용 (backend에서 python -m tools.check_alerts_truth)
+입력: data/kitti/training (label_02, image_02), outputs/kitti_0000_judged.jsonl
+출력: 화면에 프레임 / 정답 거리·TTC·단계 / 추정 거리·TTC·단계 출력
+주의: 정답 TTC는 0.5초 전 거리와 비교해서 구하므로, 앞차가 바뀌는 구간에서는 틀린 값이 나온다.
+      run_kitti_judge.py를 먼저 실행해야 jsonl 파일이 생긴다.
+"""
+
 import json
 from pathlib import Path
 from app.config import load_config

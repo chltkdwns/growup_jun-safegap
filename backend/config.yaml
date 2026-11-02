@@ -36,6 +36,7 @@ judgment:
   ttc_warning_s: 3.0            # TTC 이하면 "경고"
   ttc_danger_s: 1.5             # TTC 이하면 "위험"
   level_hold_frames: 5          # 경고 단계가 몇 프레임 유지돼야 화면에 반영할지 (깜빡임 방지)
+  same_car_iou: 0.5
 
 # ---------- C. 통합·서비스 ----------
 api:

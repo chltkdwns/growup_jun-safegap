@@ -25,14 +25,24 @@ def test_approach_reaches_warning_then_danger():
 
 
 def test_lead_change_resets_ttc():
+    """다른 차로 바뀜(id도 다르고 박스도 안 겹침) → TTC 리셋"""
     judge = make_judge()
     rows = load("approach")
     for row in rows[:40]:
         judge.judge_frame(row, speed_kmh=None)
-    switched = dict(rows[40], lead=dict(rows[40]["lead"], id=2))   # 앞차 ID만 바꿈
-    out = judge.judge_frame(switched, speed_kmh=None)
-    assert out["ttc_s"] is None   # 새 앞차는 프레임이 모일 때까지 TTC 없음
+    x1, y1, x2, y2 = rows[40]["lead"]["box"]
+    switched = dict(rows[40], lead={"id": 2, "box": [x1 + 500, y1, x2 + 500, y2]})
+    assert judge.judge_frame(switched, speed_kmh=None)["ttc_s"] is None
 
+
+def test_id_switch_same_box_keeps_ttc():
+    """같은 차인데 id만 바뀜(박스 그대로) → TTC 유지"""
+    judge = make_judge()
+    rows = load("approach")
+    for row in rows[:40]:
+        judge.judge_frame(row, speed_kmh=None)
+    switched = dict(rows[40], lead=dict(rows[40]["lead"], id=2))
+    assert judge.judge_frame(switched, speed_kmh=None)["ttc_s"] is not None
 
 def test_no_lead_is_normal():
     judge = make_judge()

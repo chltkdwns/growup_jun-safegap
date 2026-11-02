@@ -1,3 +1,4 @@
+from app.judgment.box_utils import box_iou
 from app.judgment.distance import estimate_distance_m
 from app.judgment.level_stabilizer import LevelStabilizer
 from app.judgment.ttc import TTCEstimator
@@ -20,6 +21,20 @@ class FrameJudge:
         self.ttc = TTCEstimator(fps, window_frames, cfg_judgment["max_ttc_s"])
         self.stabilizer = LevelStabilizer(cfg_judgment["level_hold_frames"])
         self.lead_id = None   # 지금 따라가고 있는 앞차 ID
+        self.lead_box = None  # 직전 프레임의 앞차 박스 (id가 바뀌어도 같은 차인지 확인용)
+
+    def _is_same_car(self, new_id: int | None, new_box: list | None) -> bool:
+        """이번 앞차가 직전 앞차와 같은 차인지 판단한다.
+
+        사용처: judge_frame()에서 TTC를 리셋할지 정할 때.
+        출력: id가 같거나, id가 달라도 박스가 많이 겹치면(IoU ≥ same_car_iou) True
+        주의: 트래커가 같은 차에 id를 새로 붙이는 경우(id 스위칭) TTC가 끊기지 않게 하려는 것.
+        """
+        if new_id == self.lead_id:
+            return True
+        if new_box is None or self.lead_box is None:
+            return False
+        return box_iou(new_box, self.lead_box) >= self.cfg["same_car_iou"]
 
     def judge_frame(self, perception: dict, speed_kmh: float | None) -> dict:
         """한 프레임의 A→B 결과(perception)를 B→C 형식으로 바꾼다.
@@ -31,10 +46,11 @@ class FrameJudge:
         lead = perception["lead"]
         # 1) 앞차가 바뀌거나 사라지면 이전 차의 기록을 버림
         new_id = lead["id"] if lead else None
-        if new_id != self.lead_id:
+        new_box = lead["box"] if lead else None
+        if not self._is_same_car(new_id, new_box):
             self.ttc.reset()
             self.stabilizer.reset()
-            self.lead_id = new_id
+        self.lead_id, self.lead_box = new_id, new_box
 
         # 2) 앞차가 있으면 거리와 TTC 계산
         distance_m = ttc_s = None
