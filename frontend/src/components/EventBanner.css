@@ -1,0 +1,12 @@
+/* 영상 왼쪽 위 상황 문구. 오른쪽 위의 단계 배지와 겹치지 않게 반대편에 둔다 */
+.event-banner {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 4px 10px;
+  border: 1.5px solid;
+  border-radius: 5px;
+  background: rgba(8, 10, 14, 0.65);
+  font-weight: 700;
+  font-size: 15px;
+}
