@@ -13,7 +13,7 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 def test_judge_file_writes_one_line_per_frame(tmp_path):
     cfg = load_config()
-    judge = FrameJudge(cfg["judgment"], fps=30, focal_px=1000)
+    judge = FrameJudge(cfg["judgment"], focal_px=1000)
     out = tmp_path / "judged.jsonl"   # pytest가 주는 임시 폴더라 테스트 뒤 자동 삭제
 
     n = judge_file(FIXTURES / "fake_approach.jsonl", out, judge, speed_kmh=100)

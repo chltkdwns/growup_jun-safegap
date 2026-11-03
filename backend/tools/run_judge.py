@@ -47,7 +47,7 @@ def main() -> None:
     if focal_px is None:
         sys.exit("초점거리가 없어요. --focal-px를 주거나 config.yaml의 camera.focal_px를 채워 주세요.")
 
-    judge = FrameJudge(cfg["judgment"], fps=args.fps, focal_px=focal_px)
+    judge = FrameJudge(cfg["judgment"], focal_px=focal_px)
     n = judge_file(args.input, args.output, judge, args.speed_kmh)
     print(f"saved {args.output} ({n} frames)")
 

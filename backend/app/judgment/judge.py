@@ -14,15 +14,14 @@ class FrameJudge:
     주의: 앞차가 바뀌거나 사라지면 TTC와 깜빡임 방지 상태를 초기화한다.
     """
 
-    def __init__(self, cfg_judgment: dict, fps: float, focal_px: float):
+    def __init__(self, cfg_judgment: dict, focal_px: float):
         self.cfg = cfg_judgment
         self.focal_px = focal_px
         self.ttc = TTCEstimator(cfg_judgment["ttc_window_s"], cfg_judgment["max_ttc_s"])
-        self.stabilizer = LevelStabilizer(cfg_judgment["level_hold_frames"])
+        self.stabilizer = LevelStabilizer(cfg_judgment["level_hold_s"])
         self.lead_id = None   # 지금 따라가고 있는 앞차 ID
         self.lead_box = None  # 직전 프레임의 앞차 박스 (id가 바뀌어도 같은 차인지 확인용)
-        self.max_missing_frames = round(cfg_judgment["max_missing_s"] * fps)  # 앞차를 놓쳐도 버틸 프레임 수
-        self.missing_frames = 0  # 지금까지 연속으로 앞차를 놓친 프레임 수
+        self.last_seen_s = None  # 마지막으로 앞차를 본 촬영 시각(초)
         self.last_out = None     # 마지막으로 앞차가 있었던 프레임의 결과
 
     def _is_same_car(self, new_id: int | None, new_box: list | None) -> bool:
@@ -48,10 +47,12 @@ class FrameJudge:
         lead = perception["lead"]
         
         # 0) 앞차를 잠깐(max_missing_s 이내) 놓치면 직전 결과를 유지 (검출이 1~2프레임 끊기는 경우)
-        if lead is None and self.last_out is not None and self.missing_frames < self.max_missing_frames:
-            self.missing_frames += 1
+        time_s = perception["time"]
+        if (lead is None and self.last_out is not None
+                and time_s - self.last_seen_s <= self.cfg["max_missing_s"]):
+            # return dict(self.last_out, frame=perception["frame"], speed_kmh=speed_kmh,
+            #             safe_distance_m=self._safe_distance(speed_kmh))
             return dict(self.last_out, frame=perception["frame"], speed_kmh=speed_kmh)
-        self.missing_frames = 0
         
         # 1) 앞차가 바뀌거나 사라지면 이전 차의 기록을 버림
         new_id = lead["id"] if lead else None
@@ -67,14 +68,15 @@ class FrameJudge:
             x1, _, x2, _ = lead["box"]
             box_w_px = x2 - x1
             distance_m = estimate_distance_m(box_w_px, self.focal_px, self.cfg["car_width_m"])
-            ttc_s = self.ttc.update(box_w_px, perception["time"])  # 실제 촬영 시각 사용
+            ttc_s = self.ttc.update(box_w_px, time_s)  # 실제 촬영 시각 사용
+            self.last_seen_s = time_s
 
         # 3) 경고 단계를 정하고 깜빡임을 막음
         raw_level = decide_level(
             distance_m, speed_kmh, ttc_s, perception["cut_in"],
             self.cfg["safe_gap_s"], self.cfg["ttc_warning_s"], self.cfg["ttc_danger_s"],
         )
-        level = self.stabilizer.update(raw_level)
+        level = self.stabilizer.update(raw_level, time_s)
 
         out = {
             "frame": perception["frame"],
