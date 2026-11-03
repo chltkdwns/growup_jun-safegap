@@ -90,3 +90,7 @@ class FrameResult(BaseModel):
     event: EventType | None
     # 이 프레임이 영상의 몇 초 지점인지(초). 화면이 영상 위치를 맞추는 데 쓴다. 재생 모드에서만 채우고 mock은 None
     time_s: float | None = None
+    # 실시간(live) 모드에서만 채운다. 화면이 보낸 프레임 번호, 그 프레임의 가로·세로(px). 박스 좌표의 기준 크기다
+    frame: int | None = None
+    frame_w_px: int | None = None
+    frame_h_px: int | None = None

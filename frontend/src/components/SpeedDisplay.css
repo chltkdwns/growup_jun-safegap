@@ -15,7 +15,7 @@
 
   .speed-display b {
     display: block;
-    font-size: 72px;
+    font-size: clamp(40px, 8vh, 72px); /* 낮은 화면에서는 줄인다 */
     font-weight: 300;
     font-variant-numeric: tabular-nums;
   }

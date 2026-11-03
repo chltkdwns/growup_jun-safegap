@@ -2,13 +2,17 @@ import asyncio
 import itertools
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
+import cv2
+import numpy as np
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
 from app.config import load_config
+from app.judgment.distance import focal_px_from_hfov
+from app.judgment.judge import FrameJudge
 from app.schemas import LEVEL_ORDER, EventType, FrameResult, Level, SetSpeed
 
 # ---- mock 값 ----
@@ -22,6 +26,7 @@ MOCK_FOCAL_PX = 1150.0  # 핀홀 공식 역산용 초점거리(px)
 MOCK_CAR_W_M = 1.8  # 앞차 실제 폭(m)
 MOCK_CAR_H_M = 1.45  # 앞차 실제 높이(m)
 MOCK_CAM_H_M = 1.35  # 카메라 높이(m): 박스 아래 변 위치 계산용
+MOCK_FRAME_W_PX = 1920.0  # mock 박스 좌표의 기준 화면 가로(px)
 MOCK_CENTER_X_PX = 960.0  # 화면 가로 중앙(px). 박스가 이 선 위에 선다
 MOCK_HORIZON_Y_PX = 470.0  # 지평선 높이(px). 먼 차일수록 박스가 이 선에 가까워진다
 MOCK_SPEED_KMH = 50.0  # 내 속도(km/h). 지금은 고정값
@@ -48,6 +53,9 @@ KMH_TO_MS = 1 / 3.6
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 VIDEO_ID_PATTERN = re.compile(r"^[\w.\-]+$")  # 경로 이동(../)을 막으려고 글자·숫자·.-_ 만 허용
 WS_POLICY_VIOLATION = 1008  # 잘못된 요청으로 연결을 닫을 때 쓰는 WebSocket 종료 코드
+
+# 실시간 모드: /ws?mode=live 로 연결해 화면이 JPEG 프레임을 보낸다 (fps와 화각은 서버 config.yaml 값을 쓴다)
+FRAME_HEADER_BYTES = 4  # 프레임 메시지 앞 4바이트 = 프레임 번호(빅엔디안 정수), 뒤는 JPEG
 
 # uvicorn이 `app.main:app`으로 이 객체를 찾아 실행한다
 app = FastAPI(title="BreakTime API")
@@ -253,13 +261,17 @@ async def replay_frames(websocket: WebSocket, video_id: str) -> None:
     사용처: ws_frames()가 mode=replay 연결에서 호출한다.
     입력: websocket 연결, video_id 영상 이름 (outputs/<video_id>.json)
     출력: FrameResult JSON을 JSON의 time(초)에 맞춰 전송. time_s에 영상 위치를 담는다
-    주의: 결과 파일이 없으면 종료 코드 1008로 연결을 닫는다. 화면이 보내는 set_speed는 무시한다
+    주의: 결과 파일이 없거나 프레임이 0개이면 종료 코드 1008로 연결을 닫는다. 화면이 보내는 set_speed는 무시한다
           (속도는 분석할 때 이미 반영됐다).
     """
     # 1단계: 결과 파일 읽기. 없으면 연결 종료
     try:
         records = load_replay(video_id)
     except FileNotFoundError:
+        await websocket.close(code=WS_POLICY_VIOLATION)
+        return
+    # 프레임이 하나도 없는 결과 파일은 재생할 것이 없으므로 같은 방식으로 닫는다
+    if not records:
         await websocket.close(code=WS_POLICY_VIOLATION)
         return
     safe_gap_s = load_config()["judgment"]["safe_gap_s"]
@@ -287,6 +299,132 @@ async def replay_frames(websocket: WebSocket, video_id: str) -> None:
         receiver.cancel()
 
 
+def fake_perception_stream(fps: float) -> Callable[[np.ndarray, int], dict]:
+    """A(인식)가 아직 없을 때 쓰는 가짜 인식기를 만든다 (mock 상황의 거리로 앞차 박스를 만든다).
+
+    사용처: live_frames()가 연결마다 한 번 호출한다. A의 PerceptionStream이 오면 PERCEPTION_FACTORY를 바꿔 끼운다.
+    입력: fps 프레임 속도(프레임/초)
+    출력: (이미지, 프레임 번호) → PerceptionFrame 모양의 dict를 돌려주는 함수
+    주의: 이미지는 보지 않는다. mock 상황을 프레임 순서대로 돌려 쓸 뿐이다.
+    """
+    situations = itertools.chain.from_iterable(
+        factory() for factory in itertools.cycle([mock_approach, mock_cut_in, mock_hard_brake])
+    )
+
+    def perceive(image: np.ndarray, frame_idx: int) -> dict:
+        distance_m, _, cut_in = next(situations)
+        # mock 박스는 1920px 기준이라, 실제 이미지 가로에 맞춰 줄인다
+        scale = image.shape[1] / MOCK_FRAME_W_PX
+        box = [v * scale for v in mock_box_px(distance_m)]
+        return {
+            "frame": frame_idx,
+            "time": frame_idx / fps,
+            "lead": {"id": 1, "box": box},
+            "cut_in": cut_in,
+        }
+
+    return perceive
+
+
+# 연결마다 인식기를 만드는 함수. A(인식)가 완성되면 이 자리에 실제 인식기를 넣는다
+PERCEPTION_FACTORY: Callable[[float], Callable[[np.ndarray, int], dict]] = fake_perception_stream
+
+
+def live_focal_px(hfov_deg: float, frame_w_px: int, frame_h_px: int) -> float:
+    """폰 카메라의 화각과 받은 프레임 크기로 초점거리(px)를 구한다.
+
+    사용처: live_frames()가 프레임을 처음 받을 때(또는 프레임 크기가 바뀔 때) 호출해 FrameJudge에 넘긴다.
+    입력: hfov_deg 카메라의 긴 변 방향 화각(도, config api.live_hfov_deg), frame_w_px·frame_h_px 받은 프레임 크기(px)
+    출력: 초점거리(px)
+    주의: 폰을 세로로 들면 가로가 짧은 변이 되므로, 화각은 항상 긴 변 기준으로 계산한다.
+          그래야 가로·세로로 돌려도 같은 카메라의 같은 초점거리가 나온다 (화면이 긴 변을 같은 길이로 줄여 보낸다는 전제).
+    """
+    # 긴 변의 화각과 긴 변의 길이로 핀홀 초점거리를 구한다 (B의 focal_px_from_hfov 재사용)
+    return focal_px_from_hfov(max(frame_w_px, frame_h_px), hfov_deg)
+
+
+async def live_frames(websocket: WebSocket, cfg: dict) -> None:
+    """화면(폰)이 보낸 JPEG 프레임을 인식 → 판단해 결과를 돌려준다.
+
+    사용처: ws_frames()가 mode=live 연결에서 호출한다.
+    입력: websocket 연결, cfg config 전체 (fps는 api.live_fps, 화각은 api.live_hfov_deg)
+    출력: 처리한 프레임마다 FrameResult JSON (frame, frame_w_px, frame_h_px 포함)
+    주의: 초점거리는 화면이 아니라 서버가 정한다 (화면이 보낸 값은 믿지 않는다). 첫 프레임의 크기로 계산하고,
+          프레임 크기가 바뀌면 다시 계산한다(이때 TTC 기록은 처음부터 다시 쌓인다).
+          처리가 프레임 도착보다 느리면 가장 최근 프레임만 처리하고 나머지는 버린다(지연이 쌓이지 않게).
+          그래서 건너뛴 프레임이 있으면 B의 TTC 창이 실제 시간과 조금 어긋날 수 있다.
+          화면이 보내는 set_speed는 다음 프레임부터 적용된다.
+    """
+    # 1단계: 연결 하나의 상태 준비 (영상 하나마다 새로 만든다)
+    state = {"speed_kmh": cfg["api"]["live_default_speed_kmh"]}
+    latest: dict = {}  # 가장 최근에 도착한 프레임 {"frame_idx", "jpeg"}. 새 프레임이 오면 덮어쓴다
+    new_frame = asyncio.Event()
+    fps = cfg["api"]["live_fps"]
+    hfov_deg = cfg["api"]["live_hfov_deg"]
+    judge: FrameJudge | None = None  # 첫 프레임 크기를 알아야 초점거리를 구할 수 있어 그때 만든다
+    judge_frame_size: tuple[int, int] | None = None
+    perceive = PERCEPTION_FACTORY(fps)
+    safe_gap_s = cfg["judgment"]["safe_gap_s"]
+
+    async def receive_loop() -> None:
+        """화면이 보낸 프레임(바이너리)과 set_speed(문자열)를 계속 받는다."""
+        try:
+            while True:
+                message = await websocket.receive()
+                if message["type"] == "websocket.disconnect":
+                    return
+                data = message.get("bytes")
+                if data is not None:
+                    # 프레임: 앞 4바이트 번호 + JPEG. 너무 짧으면 버린다
+                    if len(data) > FRAME_HEADER_BYTES:
+                        latest["frame_idx"] = int.from_bytes(data[:FRAME_HEADER_BYTES], "big")
+                        latest["jpeg"] = data[FRAME_HEADER_BYTES:]
+                        new_frame.set()
+                elif message.get("text") is not None:
+                    try:
+                        state["speed_kmh"] = SetSpeed.model_validate_json(message["text"]).speed_kmh
+                    except ValidationError:
+                        continue
+        finally:
+            new_frame.set()  # 기다리는 처리 루프가 끝나도록 깨운다
+
+    receiver = asyncio.create_task(receive_loop())
+    try:
+        while True:
+            # 2단계: 새 프레임을 기다린다. 연결이 끊겼으면 끝낸다
+            await new_frame.wait()
+            if receiver.done():
+                break
+            new_frame.clear()
+            frame_idx, jpeg = latest["frame_idx"], latest["jpeg"]
+
+            # 3단계: JPEG를 이미지로 풀기. 깨진 프레임은 건너뛴다
+            image = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+            if image is None:
+                continue
+            frame_h_px, frame_w_px = image.shape[:2]
+
+            # 초점거리는 프레임 크기로 정한다. 처음이거나 크기가 바뀌면 판단기를 새로 만든다
+            if judge is None or judge_frame_size != (frame_w_px, frame_h_px):
+                focal_px = live_focal_px(hfov_deg, frame_w_px, frame_h_px)
+                judge = FrameJudge(cfg["judgment"], fps=fps, focal_px=focal_px)
+                judge_frame_size = (frame_w_px, frame_h_px)
+
+            # 4단계: 인식은 오래 걸리므로 별도 스레드에서 돌려 서버(속도 요청 수신)가 멈추지 않게 한다
+            perception = await asyncio.to_thread(perceive, image, frame_idx)
+
+            # 5단계: 판단 후 화면용 결과로 바꿔 보낸다 (인식 결과와 판단 결과를 합쳐 replay_frame을 재사용)
+            judged = judge.judge_frame(perception, state["speed_kmh"])
+            result = replay_frame({**perception, **judged}, safe_gap_s).model_copy(
+                update={"frame": frame_idx, "frame_w_px": frame_w_px, "frame_h_px": frame_h_px}
+            )
+            await websocket.send_text(result.model_dump_json())
+    except WebSocketDisconnect:
+        pass
+    finally:
+        receiver.cancel()
+
+
 @app.websocket("/ws")
 async def ws_frames(websocket: WebSocket) -> None:
     """가짜 주행 상황(접근, 끼어들기, 급정거)을 프레임처럼 계속 보낸다.
@@ -298,6 +436,14 @@ async def ws_frames(websocket: WebSocket) -> None:
     """
     # 1단계: 연결 수락. mode=replay이면 저장된 분석 결과를 재생한다
     await websocket.accept()
+    if websocket.query_params.get("mode") == "live":
+        cfg = load_config()
+        # 화각이 설정에 없으면 거리를 계산할 수 없으므로 연결을 닫는다
+        if cfg["api"].get("live_hfov_deg") is None:
+            await websocket.close(code=WS_POLICY_VIOLATION)
+            return
+        await live_frames(websocket, cfg)
+        return
     if websocket.query_params.get("mode") == "replay":
         await replay_frames(websocket, websocket.query_params.get("video_id", ""))
         return

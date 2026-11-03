@@ -46,6 +46,9 @@ judgment:
 # ---------- C. 통합·서비스 ----------
 api:
   max_upload_mb: 500            # 업로드 영상 최대 크기(MB)
+  live_fps: 15                  # 실시간(live) 모드에서 폰이 보내는 프레임 속도(프레임/초). B의 TTC 창 계산에 쓴다. 화면 constants.ts의 LIVE_FPS와 같아야 한다
+  live_hfov_deg: 70.0           # 폰 카메라의 "긴 변" 방향 화각(도). 서버가 이 값과 프레임 크기로 초점거리를 구한다. 70은 가정값이며, 폰 설정 파일이 오면 그 값을 쓴다
+  live_default_speed_kmh: 50.0  # 실시간 모드에서 화면이 내 속도를 보내기 전까지 쓰는 속도(km/h)
   cors_origins:                 # React 개발 서버 주소 (브라우저 접근 허용 목록)
     - http://localhost:5173
 

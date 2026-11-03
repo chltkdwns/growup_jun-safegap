@@ -47,11 +47,25 @@
   mix-blend-mode: screen;
 }
 
-/* 헤더 오른쪽: 연결 상태와 (세로 화면의) 햄버거 버튼을 한 줄로 */
+/* 헤더 오른쪽: 연결 상태와 (세로 화면의) 햄버거 버튼을 한 줄로. 좁아도 줄바꿈하지 않고 버튼이 잘리지 않게 한다 */
 .app-header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  flex: 1 1 0; /* 로고 옆 남는 폭만 쓴다 */
+  flex-wrap: nowrap;
+  min-width: 0;
+  gap: 6px;
+}
+
+/* 상태 칸은 좁아지면 글자를 "…"로 줄이고, 햄버거 버튼은 눌리지 않게 고정한다 */
+.app-header-right > .status {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.app-header-right > :not(.status) {
+  flex: none;
 }
 
 /* 연결 상태: 앞의 점 색으로 연결됨(초록) / 안 됨(빨강)을 구분한다 */
@@ -64,6 +78,10 @@
   border-radius: 999px;
   font-size: 13px;
   color: var(--muted);
+  white-space: nowrap; /* 좁은 화면에서 글자가 한 글자씩 줄바꿈되지 않게 한다 */
+  max-width: 46vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .status::before {
@@ -114,12 +132,48 @@
   gap: 4px;
 }
 
-/* ---- 세로로 긴 화면 (앱): 영상은 화면 폭을 가득 채워 위에 붙고, 조작은 아래 고정 바로 옮긴다 ---- */
+/* ---- 세로로 긴 화면 (앱): 스크롤 없이 한 화면에 모두 보이게 한다 ----
+   위에서 아래로 헤더, 속도, 영상, 정보, 조작을 쌓고, 영상이 남는 높이를 모두 쓴다.
+   화면이 작으면 영상이 줄어들 뿐 다른 칸은 항상 보인다 */
 @media (orientation: portrait) {
-  /* 바깥 여백을 없애고 각 영역이 자기 여백을 갖는다. 아래 고정 바에 가리지 않게 바닥 여백을 둔다 */
   #root {
-    --bar-h: 184px; /* 아래 조작 바의 대략적인 높이. 내용이 가려지지 않게 하는 여백 계산용 */
-    padding: 0 0 calc(var(--bar-h) + env(safe-area-inset-bottom));
+    height: 100vh;
+    height: 100dvh; /* 주소창이 접히고 펴지는 폰 브라우저에서도 보이는 높이에 맞춘다 */
+    max-width: none;
+    padding: 0 0 env(safe-area-inset-bottom);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .app {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .app-header {
+    flex: none;
+  }
+
+  /* 연결됨일 때는 글자 없이 초록 점만 보여 헤더 폭을 아낀다 (끊기면 "연결 안 됨" 글자가 나온다) */
+  .status[data-connected='true'] .status-text {
+    display: none;
+  }
+
+  .status[data-connected='true'] {
+    padding: 2px 8px;
+  }
+
+  /* 영상 영역(.app-video)과 아래 패널(.app-side)을 세로로 쌓는다. 영상이 남는 높이를 가져간다 */
+  .app-main {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch; /* 기본값(start)이면 안쪽 칸이 내용 폭으로 줄어든다 */
+    gap: 0;
   }
 
   /* 노치(상단 홈) 영역을 피해 헤더를 놓는다 */
@@ -128,40 +182,50 @@
     padding: calc(8px + env(safe-area-inset-top)) 16px 8px;
   }
 
-  /* 영상은 폭 가득, 모서리 없이, 스크롤해도 위에 남는다 */
+  /* 영상은 폭 가득, 모서리 없이, 남는 높이를 모두 쓴다 (비율은 영상 안에서 맞춘다) */
   .app-video {
-    position: sticky;
-    top: 0;
-    z-index: 5;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
 
   .app-video .video-player {
+    flex: 1;
+    min-height: 0;
+    aspect-ratio: auto;
     border-radius: 0;
   }
 
   /* 패널은 카드 모양을 벗고 화면 가장자리까지 쓴다. 정보 칸은 2x2로 크게 */
   .app-side {
+    flex: none;
     background: none;
     border: 0;
     border-radius: 0;
     padding: 0 16px;
   }
 
+  /* 낮은 화면에서는 정보 칸 숫자와 여백을 화면 높이에 비례해 줄인다 */
+  .app-side .info-panel {
+    gap: 6px 12px;
+    padding: 6px 0;
+  }
+
+  .app-side .metric-num b {
+    font-size: clamp(20px, 3.4vh, 28px);
+  }
+
   .app-side .info-panel {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  /* 아래 고정 바: 엄지로 닿는 곳에 속도 슬라이더와 버튼을 모은다 */
+  /* 아래 조작 바: 엄지로 닿는 곳에 속도 슬라이더와 버튼을 모은다 (화면 맨 아래에 붙는 일반 칸) */
   .app-controls {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 10;
-    padding: 12px max(16px, calc((100% - 720px) / 2)) calc(12px + env(safe-area-inset-bottom));
+    margin: 0 -16px; /* .app-side의 좌우 여백을 상쇄해 화면 폭을 가득 채운다 */
+    padding: 8px max(16px, calc((100% - 720px) / 2));
     background: var(--panel);
     border-top: 1px solid var(--line);
-    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
   }
 
   .app-controls .speed-input {
@@ -192,5 +256,135 @@
   /* 화면 모드(테마) 버튼은 위쪽 햄버거 메뉴로 옮겼으므로 하단 바에서는 숨긴다 */
   .app-toggles .toggle-group {
     display: none;
+  }
+}
+
+/* ---- 가로 화면: 스크롤 없이 한 화면에 모두 보이게 한다 ----
+   폰을 가로로 든 경우부터 큰 모니터까지 같다. 왼쪽은 영상(남는 폭과 높이를 모두 사용), 오른쪽은 정보와 조작 칸이다.
+   화면이 낮으면 글자와 여백이 높이에 비례해 줄고, 보조 설명은 숨긴다 */
+@media (orientation: landscape) {
+  #root {
+    height: 100vh;
+    height: 100dvh;
+    max-width: none;
+    padding: 8px max(12px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .app {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .app-header {
+    flex: none;
+    margin-bottom: 8px;
+  }
+
+  /* 로고는 높이에 비례해 줄인다 (가로 폭 기준 clamp가 낮은 화면에서는 너무 큼) */
+  .app-logo {
+    width: clamp(110px, 24vh, 240px);
+  }
+
+  .app-main {
+    flex: 1;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr) clamp(220px, 34vw, 340px);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .app-video {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .app-video .video-player {
+    flex: 1;
+    min-height: 0;
+    aspect-ratio: auto;
+  }
+
+  .app-side {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 12px 10px;
+    overflow-y: auto; /* 직접 입력 슬라이더를 펼쳐 칸이 넘칠 때만 안에서 스크롤된다 */
+  }
+
+  .app-side .info-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 12px;
+    padding: 4px 0;
+  }
+
+  .app-side .metric-num b {
+    font-size: clamp(18px, 4.6vh, 28px);
+  }
+}
+
+/* 낮은 가로 화면(폰): 보조 설명을 숨기고 버튼과 여백을 줄인다 */
+@media (orientation: landscape) and (max-height: 500px) {
+  .app-header {
+    margin-bottom: 4px;
+  }
+
+  .app-header h1 {
+    font-size: 18px;
+  }
+
+  .app-side .metric-sub {
+    display: none;
+  }
+
+  .app-side button {
+    padding: 3px 10px;
+    font-size: 13px;
+  }
+
+  .app-side .speed-input {
+    gap: 4px;
+    padding: 2px 0;
+  }
+
+  .app-side .speed-input-head output {
+    font-size: 22px;
+  }
+
+  .app-toggles {
+    margin-top: 4px;
+    gap: 4px;
+  }
+}
+
+/* 아주 낮은 가로 화면(높이 340px 이하): 한 번 더 줄여 모두 들어가게 한다 */
+@media (orientation: landscape) and (max-height: 340px) {
+  .app-side {
+    gap: 2px;
+    padding: 4px 10px 6px;
+  }
+
+  .app-side .metric-num b {
+    font-size: 17px;
+  }
+
+  .app-side .metric-label {
+    font-size: 11px;
+  }
+
+  .app-side .speed-input-head output {
+    font-size: 18px;
+  }
+
+  .app-side button {
+    padding: 2px 8px;
   }
 }

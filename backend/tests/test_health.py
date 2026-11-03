@@ -162,3 +162,14 @@ def test_ws_replay_rejects_unknown_video() -> None:
         with pytest.raises(WebSocketDisconnect):
             with client.websocket_connect(f"/ws?mode=replay&video_id={video_id}") as ws:
                 ws.receive_json()
+
+
+def test_ws_replay_closes_on_empty_result(tmp_path, monkeypatch) -> None:
+    """프레임이 0개인 결과 파일이면 오류 없이 연결을 닫는지 확인한다."""
+    import pytest
+    from starlette.websockets import WebSocketDisconnect
+
+    monkeypatch.setattr("app.main.load_replay", lambda video_id: [])
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect("/ws?mode=replay&video_id=empty") as ws:
+            ws.receive_json()
