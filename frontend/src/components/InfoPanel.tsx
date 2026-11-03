@@ -9,7 +9,7 @@ import './InfoPanel.css'
  */
 export function InfoPanel({ frame }: { frame: FrameResult | null }) {
   // 1단계: 칸에 보여 줄 글자 준비 (값이 없으면 "—")
-  const distance = frame ? frame.distance_m.toFixed(1) : '—'
+  const distance = frame && frame.distance_m !== null ? frame.distance_m.toFixed(1) : '—'
   const relSpeed = frame ? (frame.rel_speed_mps * MS_TO_KMH).toFixed(0) : '—'
   const ttc = frame && frame.ttc_s !== null ? frame.ttc_s.toFixed(1) : '—'
   const safeDistance = frame ? frame.safe_distance_m.toFixed(1) : '—'

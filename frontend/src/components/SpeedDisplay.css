@@ -1,0 +1,28 @@
+/* 가로(웹) 화면에서는 속도가 오른쪽 패널의 조작부에 이미 있어서 숨긴다 */
+.speed-display {
+  display: none;
+}
+
+/* 세로(앱) 화면: 영상 위에 큰 숫자를 가운데 놓는다. 영상과 함께 위에 붙어 있어 배경을 채운다 */
+@media (orientation: portrait) {
+  .speed-display {
+    display: block;
+    padding: 4px 0 8px;
+    background: var(--bg);
+    text-align: center;
+    line-height: 1;
+  }
+
+  .speed-display b {
+    display: block;
+    font-size: 72px;
+    font-weight: 300;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .speed-display span {
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+  }
+}

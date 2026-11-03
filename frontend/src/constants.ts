@@ -23,7 +23,7 @@ export const MS_TO_KMH = 3.6
 export const SPEED_MIN_KMH = 30
 export const SPEED_MAX_KMH = 130
 export const SPEED_STEP_KMH = 5
-export const DEFAULT_SPEED_KMH = 100
+export const DEFAULT_SPEED_KMH = 50
 
 // 경고가 나온 이유. 서버(schemas.py의 EventType)와 같은 이름이어야 한다.
 export type EventType = 'gap_short' | 'cut_in' | 'hard_brake'

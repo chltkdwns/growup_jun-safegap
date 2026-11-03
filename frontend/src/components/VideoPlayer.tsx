@@ -14,8 +14,8 @@ export function VideoPlayer({ src, children }: VideoPlayerProps) {
   return (
     // 바깥 div가 16:9 틀이자 오버레이의 기준 위치(position: relative)다
     <div className="video-player">
-      {/* 영상 파일이 있으면 <video>, 없으면 자리 표시 */}
-      {src ? <video src={src} controls muted /> : <span className="video-empty">영상 없음</span>}
+      {/* 영상 파일이 있으면 <video>, 없으면 자리 표시. 서버 재생(replay)과 맞추려고 자동 반복 재생하고 컨트롤은 뺐다 */}
+      {src ? <video src={src} autoPlay loop muted /> : <span className="video-empty">영상 없음</span>}
       {/* 오버레이는 영상 뒤에 렌더돼 영상 위에 겹친다 */}
       {children}
     </div>

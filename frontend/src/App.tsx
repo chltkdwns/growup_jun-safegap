@@ -1,8 +1,11 @@
+import logo from './assets/logo.png'
 import { BoxOverlay } from './components/BoxOverlay'
 import { EventBanner } from './components/EventBanner'
 import { InfoPanel } from './components/InfoPanel'
 import { SoundToggle } from './components/SoundToggle'
+import { SpeedDisplay } from './components/SpeedDisplay'
 import { SpeedInput } from './components/SpeedInput'
+import { ThemeMenu } from './components/ThemeMenu'
 import { ThemeToggle } from './components/ThemeToggle'
 import { VideoPlayer } from './components/VideoPlayer'
 import { WarningBadge } from './components/WarningBadge'
@@ -24,16 +27,25 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>SafeGap</h1>
-        <span className="status" data-connected={connected}>
-          {connected ? '연결됨' : '연결 안 됨'}
-        </span>
+        {/* 로고 이미지. 글자는 alt로 남겨 이미지가 안 뜰 때나 스크린리더에서 읽히게 한다 */}
+        <h1 className="app-logo">
+          <img src={logo} alt="SafeGap" />
+        </h1>
+        <div className="app-header-right">
+          <span className="status" data-connected={connected}>
+            {connected ? '연결됨' : '연결 안 됨'}
+          </span>
+          {/* 세로 화면에서만 보이는 햄버거. 안에 화면 모드(테마) 선택이 들어 있다 */}
+          <ThemeMenu mode={mode} onChange={changeMode} />
+        </div>
       </header>
 
       <main className="app-main">
         {/* 영상 틀 위에 박스를 겹쳐 그린다. 경고 배지 등 다른 오버레이도 같은 자리에 children으로 추가한다 */}
         <section className="app-video">
-          <VideoPlayer>
+          {/* 세로 화면에서만 보이는 큰 속도 숫자 (영상과 함께 위에 붙는다) */}
+          <SpeedDisplay frame={frame} />
+          <VideoPlayer src={import.meta.env.VITE_VIDEO_SRC}>
             <BoxOverlay frame={frame} />
             <WarningBadge frame={frame} />
             <EventBanner frame={frame} />
@@ -44,7 +56,7 @@ function App() {
           <InfoPanel frame={frame} />
           {/* 조작 묶음: 속도 슬라이더, 경고음, 테마. 세로 화면에서는 아래 고정 바가 된다 */}
           <div className="app-controls">
-            {/* 슬라이더 값이 바뀌면 서버에 내 속도를 알린다 */}
+            {/* 속도 요약 줄을 누르면 슬라이더가 펼쳐진다. 값이 바뀌면 서버에 내 속도를 알린다 */}
             <SpeedInput onChange={setSpeed} />
             <div className="app-toggles">
               <SoundToggle soundOn={soundOn} onToggle={toggleSound} />

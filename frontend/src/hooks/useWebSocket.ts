@@ -3,7 +3,7 @@ import type { EventType, Level } from '../constants'
 
 // 백엔드 schemas.py의 FrameResult와 같은 모양. 필드가 늘면 양쪽을 같이 고친다.
 export interface FrameResult {
-  distance_m: number // 앞차까지 거리(m)
+  distance_m: number | null // 앞차까지 거리(m). 앞차가 없으면 null
   // 앞차 박스 [x1, y1, x2, y2] (px, FRAME_W_PX x FRAME_H_PX 기준). 앞차가 없으면 null
   lead_box_px: [number, number, number, number] | null
   speed_kmh: number // 내 속도(km/h)

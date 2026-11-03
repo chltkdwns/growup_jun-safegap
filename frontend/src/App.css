@@ -13,6 +13,47 @@
   letter-spacing: 0.02em;
 }
 
+/* 로고: 원본은 1024x1024 정사각형에 글자가 가운데 가로띠로만 있어서, 5:1 틀에 가운데만 보이게 잘라 쓴다.
+   원본이 검은 배경에 어두운 파랑이라 다크 테마에서는 screen 섞기로 검정을 투명하게 하고 밝기를 올린다 */
+.app-logo {
+  flex: none;
+  /* 화면 폭(vw)에 비례하되 너무 작거나 커지지 않게 최소·최대로 묶는다 (세로 화면 기준) */
+  width: clamp(130px, 42vw, 240px);
+  aspect-ratio: 5 / 1;
+  overflow: hidden;
+  border-radius: 6px;
+  /* 원본 글자 앞에 8% 정도 빈 여백이 있어서 그만큼 왼쪽으로 당긴다 (자기 폭 기준 %) */
+  transform: translateX(-6%);
+}
+
+/* 가로로 넓은 화면(웹): 폭이 넓으므로 비율을 낮추고 최대를 키운다 */
+@media (min-width: 800px) and (orientation: landscape) {
+  .app-logo {
+    width: clamp(180px, 16vw, 320px);
+  }
+}
+
+.app-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* 글자 띠가 원본의 가운데보다 약간 위(약 48%)에 있어서, 보이는 구간을 올려 글자가 틀의 세로 가운데로 오게 한다 */
+  object-position: 50% 47%;
+  filter: brightness(2.2);
+}
+
+:root[data-theme='dark'] .app-logo img {
+  mix-blend-mode: screen;
+}
+
+/* 헤더 오른쪽: 연결 상태와 (세로 화면의) 햄버거 버튼을 한 줄로 */
+.app-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* 연결 상태: 앞의 점 색으로 연결됨(초록) / 안 됨(빨강)을 구분한다 */
 .status {
   display: inline-flex;
@@ -77,7 +118,7 @@
 @media (orientation: portrait) {
   /* 바깥 여백을 없애고 각 영역이 자기 여백을 갖는다. 아래 고정 바에 가리지 않게 바닥 여백을 둔다 */
   #root {
-    --bar-h: 168px; /* 아래 조작 바의 대략적인 높이. 내용이 가려지지 않게 하는 여백 계산용 */
+    --bar-h: 184px; /* 아래 조작 바의 대략적인 높이. 내용이 가려지지 않게 하는 여백 계산용 */
     padding: 0 0 calc(var(--bar-h) + env(safe-area-inset-bottom));
   }
 
@@ -127,7 +168,7 @@
     padding: 0;
   }
 
-  /* 터치하기 쉬운 크기(최소 44px)로 키우고, 테마 버튼 묶음이 남은 폭을 채운다 */
+  /* 터치하기 쉬운 크기(최소 44px)로 키운다 */
   .app-controls button {
     min-height: 44px;
     font-size: 15px;
@@ -137,16 +178,19 @@
     min-height: 32px;
   }
 
-  .app-toggles {
-    flex-wrap: nowrap;
+  /* 내 속도는 위쪽 큰 숫자(SpeedDisplay)에 이미 보이므로 하단 바의 속도 요약 줄은 숨긴다 (가로 화면은 이 줄이 유일한 표시라 그대로) */
+  .app-controls .speed-input-head {
+    display: none;
   }
 
+  /* "직접 입력" 토글은 작은 글씨 링크라서 44px까지 키우지 않는다 (바가 높아지는 것을 막는다) */
+  .app-controls .speed-input-manual-toggle {
+    min-height: 28px;
+    font-size: 12px;
+  }
+
+  /* 화면 모드(테마) 버튼은 위쪽 햄버거 메뉴로 옮겼으므로 하단 바에서는 숨긴다 */
   .app-toggles .toggle-group {
-    flex: 1;
-  }
-
-  .app-toggles .toggle-group button {
-    flex: 1;
-    padding-inline: 4px;
+    display: none;
   }
 }

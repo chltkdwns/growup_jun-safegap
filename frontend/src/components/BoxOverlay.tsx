@@ -14,7 +14,7 @@ const BOX_LINE_PX = 4 // 박스 테두리 두께
  */
 export function BoxOverlay({ frame }: { frame: FrameResult | null }) {
   // 1단계: 아직 프레임이 없거나 앞차가 없으면 그리지 않는다
-  if (!frame || !frame.lead_box_px) return null
+  if (!frame || !frame.lead_box_px || frame.distance_m === null) return null
 
   // 2단계: 박스 좌표, 색, 라벨 글자와 배경 폭 준비
   const [x1, y1, x2, y2] = frame.lead_box_px

@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import { MS_TO_KMH } from '../constants'
 
-// GPS 상태: 아직 모름(대기) / 값 수신 중 / 사용자가 위치 권한을 거부 / 이 기기·주소에서 사용 불가
-export type GpsStatus = 'waiting' | 'ok' | 'denied' | 'unavailable'
+// GPS 상태: 아직 모름(대기) / 값 수신 중 / 사용자가 위치 권한을 거부 / 이 기기·주소에서 사용 불가 / 신호가 없거나 끊김
+export type GpsStatus = 'waiting' | 'ok' | 'denied' | 'unavailable' | 'stale'
+
+// 이 시간(ms) 동안 위치 갱신이 한 번도 없으면 GPS가 안 되는 것으로 본다 (켠 뒤 첫 신호도, 중간에 끊긴 경우도 같은 기준)
+export const GPS_STALE_MS = 5000
 
 // 브라우저가 위치 기능을 줄 때만 true. HTTPS가 아닌 주소(localhost 제외)에서는 undefined가 되기도 한다.
 const GPS_SUPPORTED = typeof navigator !== 'undefined' && 'geolocation' in navigator
@@ -13,6 +16,7 @@ const GPS_SUPPORTED = typeof navigator !== 'undefined' && 'geolocation' in navig
  * 입력: enabled 켜져 있을 때만 위치를 구독한다 (꺼지면 구독을 끊어 배터리를 아낀다)
  * 출력: speedKmh 가장 최근 속도(km/h). 정차 직후·신호 약함 등으로 속도를 모르면 null. status 현재 상태.
  * 주의: 위치 권한 허용이 필요하다. 데스크톱은 보통 속도를 주지 않아 null이다.
+ *       GPS_STALE_MS 동안 갱신이 없으면 옛 값을 계속 쓰지 않고 속도를 null로 돌려 호출한 쪽이 직접 입력으로 넘어가게 한다.
  */
 export function useGpsSpeed(enabled: boolean) {
   const [speedKmh, setSpeedKmh] = useState<number | null>(null)
@@ -21,15 +25,28 @@ export function useGpsSpeed(enabled: boolean) {
   useEffect(() => {
     if (!enabled || !GPS_SUPPORTED) return
 
+    // 갱신이 끊겼는지 지키는 타이머. 위치가 올 때마다 다시 건다
+    let staleTimer: ReturnType<typeof setTimeout>
+    const armStaleTimer = () => {
+      clearTimeout(staleTimer)
+      staleTimer = setTimeout(() => {
+        setSpeedKmh(null)
+        setStatus('stale')
+      }, GPS_STALE_MS)
+    }
+    armStaleTimer() // 켠 뒤 첫 신호가 영영 안 오는 경우도 같은 타이머로 잡는다
+
     // 위치가 갱신될 때마다 호출된다. coords.speed는 m/s이고 모르면 null이다
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
         const speedMps = position.coords.speed
         setSpeedKmh(speedMps == null ? null : speedMps * MS_TO_KMH)
         setStatus('ok')
+        armStaleTimer()
       },
       // 권한 거부(code 1)와 그 밖의 실패(신호 없음 등)를 나눠서 알려 준다
       (error) => {
+        clearTimeout(staleTimer) // 원인을 이미 알았으니 "끊김"으로 덮어쓰지 않는다 (다음 위치가 오면 다시 건다)
         setSpeedKmh(null)
         setStatus(error.code === error.PERMISSION_DENIED ? 'denied' : 'unavailable')
       },
@@ -39,6 +56,7 @@ export function useGpsSpeed(enabled: boolean) {
 
     // 끄거나 화면을 떠날 때 구독을 끊고 값을 비운다 (다시 켰을 때 옛 값이 보이지 않게)
     return () => {
+      clearTimeout(staleTimer)
       navigator.geolocation.clearWatch(watchId)
       setSpeedKmh(null)
       setStatus('waiting')
