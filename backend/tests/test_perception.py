@@ -3,10 +3,12 @@
 실행 (backend 폴더에서): python -m pytest tests
 """
 
+from app.config import load_config
+from app.perception import pipeline
 from app.perception.cut_in import CutInDetector
 from app.perception.lateral import lateral_offset_m
 from app.perception.lead import LeadSelector
-from app.perception.pipeline import perceive_frame
+from app.perception.pipeline import PerceptionStream, perceive_frame
 
 FRAME_W_PX = 1000
 CENTER_X_PX = 500  # 정면은 화면 중앙
@@ -205,6 +207,21 @@ def test_irregular_frame_interval_uses_time_not_frame_count():
         for x, t in zip(xs, times_s)
     ]
     assert flags[-1] is True
+
+
+def test_min_box_width_scales_with_long_side(monkeypatch):
+    # YOLO 가중치를 읽지 않고 PerceptionStream만 만들어, 최소 박스 폭이 긴 변에 비례하는지 본다
+    monkeypatch.setattr(pipeline, "load_detector", lambda weights_path: None)
+    cfg = load_config()["perception"]
+
+    def min_w_px(frame_w_px: int, frame_h_px: int) -> float:
+        stream = PerceptionStream("unused.pt", cfg, frame_w_px, frame_h_px)
+        return stream.cut_in_detector.min_box_w_px
+
+    ratio = cfg["cut_in_min_box_w_ratio"]
+    assert min_w_px(1920, 1088) == ratio * 1920  # 가로 영상: 긴 변은 가로
+    assert min_w_px(960, 540) == ratio * 960  # 절반으로 줄이면 최소 폭도 절반
+    assert min_w_px(540, 960) == ratio * 960  # 세로로 들어도 긴 변이 같으면 같은 값
 
 
 def test_perceive_frame_matches_interface():

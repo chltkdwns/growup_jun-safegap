@@ -62,13 +62,16 @@ class PerceptionStream:
             perception_cfg["lead_half_width_m"],
             perception_cfg["lead_switch_area_ratio"],
         )
+        # 최소 박스 폭은 긴 변 대비 비율로 받아 해상도가 바뀌어도 같은 기준이 되게 한다
+        # (폰을 세로로 들어도 긴 변이 같아야 같은 크기 차가 같은 폭이 된다)
+        min_box_w_px = perception_cfg["cut_in_min_box_w_ratio"] * max(frame_w_px, frame_h_px)
         self.cut_in_detector = CutInDetector(
             perception_cfg["cut_in_window_s"],
             self.car_width_m,
             perception_cfg["lane_half_width_m"],
             perception_cfg["cut_in_zone_m"],
             perception_cfg["cut_in_move_m"],
-            perception_cfg["cut_in_min_box_w_px"],
+            min_box_w_px,
         )
         self.last_tracks: dict[int, list[float]] = {}  # 직전 프레임의 트래킹 결과 (디버그 영상용)
 
