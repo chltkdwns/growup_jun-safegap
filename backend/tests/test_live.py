@@ -4,13 +4,21 @@ import cv2
 import numpy as np
 import pytest
 from app.config import load_config
-from app.main import app, live_focal_px
+from app.main import app, fake_perception_stream, live_focal_px
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 client = TestClient(app)
 
 LIVE_URL = "/ws?mode=live"
+
+
+@pytest.fixture(autouse=True)
+def use_fake_perception(monkeypatch) -> None:
+    """테스트는 YOLO 모델을 불러오지 않도록 가짜 인식기로 바꿔 끼운다 (진짜 인식기는 아래 별도 테스트)."""
+    monkeypatch.setattr("app.main.PERCEPTION_FACTORY", fake_perception_stream)
+
+
 FRAME_W_PX, FRAME_H_PX = 320, 180  # 테스트용 작은 이미지
 
 
@@ -113,3 +121,15 @@ def test_ws_live_handles_frame_size_change() -> None:
 
     assert (first["frame_w_px"], first["frame_h_px"]) == (320, 180)
     assert (second["frame_w_px"], second["frame_h_px"]) == (180, 320)
+
+
+def test_real_perception_stream_returns_perception_dict() -> None:
+    """진짜 인식기가 빈 이미지에서 오류 없이 PerceptionFrame 모양을 돌려주는지 확인한다 (앞차 없음)."""
+    from app.main import real_perception_stream
+
+    perceive = real_perception_stream(load_config())
+    result = perceive(np.zeros((640, 360, 3), np.uint8), 3, 0.5)
+
+    assert result["frame"] == 3
+    assert result["time"] == 0.5
+    assert result["lead"] is None

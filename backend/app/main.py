@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from app.config import load_config
 from app.judgment.distance import resolve_focal_px
 from app.judgment.judge import FrameJudge
+from app.perception.pipeline import PerceptionStream
 from app.schemas import FrameResult, SetSpeed
 
 # ---- mock 값 ----
@@ -269,11 +270,11 @@ async def replay_frames(websocket: WebSocket, video_id: str) -> None:
         receiver.cancel()
 
 
-def fake_perception_stream() -> Callable[[np.ndarray, int, float], dict]:
+def fake_perception_stream(cfg: dict | None = None) -> Callable[[np.ndarray, int, float], dict]:
     """A(인식)가 아직 없을 때 쓰는 가짜 인식기를 만든다 (mock 상황의 거리로 앞차 박스를 만든다).
 
-    사용처: live_frames()가 연결마다 한 번 호출한다. A의 PerceptionStream이 오면 PERCEPTION_FACTORY를 바꿔 끼운다.
-    입력: 없음
+    사용처: 테스트가 PERCEPTION_FACTORY를 이 함수로 바꿔 끼워 쓴다 (실제 서버는 real_perception_stream을 쓴다).
+    입력: cfg config 전체 (쓰지 않는다. PERCEPTION_FACTORY와 모양을 맞추려고 받는다)
     출력: (이미지, 프레임 번호, 촬영 시각 초) → PerceptionFrame 모양의 dict를 돌려주는 함수
     주의: 이미지는 보지 않는다. mock 상황을 프레임 순서대로 돌려 쓸 뿐이다.
     """
@@ -291,8 +292,34 @@ def fake_perception_stream() -> Callable[[np.ndarray, int, float], dict]:
     return perceive
 
 
-# 연결마다 인식기를 만드는 함수. A(인식)가 완성되면 이 자리에 실제 인식기를 넣는다
-PERCEPTION_FACTORY: Callable[[], Callable[[np.ndarray, int, float], dict]] = fake_perception_stream
+def real_perception_stream(cfg: dict) -> Callable[[np.ndarray, int, float], dict]:
+    """A의 PerceptionStream(YOLO + 트래킹 + 앞차 선정 + 끼어들기)으로 프레임을 인식하는 함수를 만든다.
+
+    사용처: live_frames()가 연결마다 한 번 호출한다.
+    입력: cfg config 전체 (perception 섹션의 모델 경로와 임계값을 쓴다)
+    출력: (이미지, 프레임 번호, 촬영 시각 초) → PerceptionFrame을 dict로 바꾼 값을 돌려주는 함수
+    주의: PerceptionStream은 프레임 크기를 만들 때 받으므로, 첫 프레임에서 만들고 크기가 바뀌면(폰 회전) 새로 만든다
+          (이때 트래킹 기록은 처음부터 다시 쌓인다). 모델은 첫 프레임에서 불러오므로 첫 결과가 늦을 수 있다.
+    """
+    perception_cfg = cfg["perception"]
+    stream: PerceptionStream | None = None
+    stream_size: tuple[int, int] | None = None
+
+    def perceive(image: np.ndarray, frame_idx: int, time_s: float) -> dict:
+        nonlocal stream, stream_size
+        frame_h_px, frame_w_px = image.shape[:2]
+        # 1단계: 처음이거나 프레임 크기가 바뀌면 인식기를 새로 만든다
+        if stream is None or stream_size != (frame_w_px, frame_h_px):
+            stream = PerceptionStream(perception_cfg["model"], perception_cfg, frame_w_px, frame_h_px)
+            stream_size = (frame_w_px, frame_h_px)
+        # 2단계: 한 프레임 인식
+        return stream.process(image, frame_idx, time_s).model_dump()
+
+    return perceive
+
+
+# 연결마다 인식기를 만드는 함수. 테스트에서는 fake_perception_stream으로 바꿔 끼운다
+PERCEPTION_FACTORY: Callable[[dict], Callable[[np.ndarray, int, float], dict]] = real_perception_stream
 
 
 def load_phone_config(cfg: dict) -> dict:
@@ -339,7 +366,7 @@ async def live_frames(websocket: WebSocket, cfg: dict) -> None:
     camera_cfg = load_phone_config(cfg)["camera"]
     judge: FrameJudge | None = None  # 첫 프레임 크기를 알아야 초점거리를 구할 수 있어 그때 만든다
     judge_frame_size: tuple[int, int] | None = None
-    perceive = PERCEPTION_FACTORY()
+    perceive = PERCEPTION_FACTORY(cfg)
 
     async def receive_loop() -> None:
         """화면이 보낸 프레임(바이너리)과 set_speed(문자열)를 계속 받는다."""
