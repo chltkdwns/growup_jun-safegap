@@ -48,6 +48,8 @@ judgment:
 # ---------- C. 통합·서비스 ----------
 api:
   max_upload_mb: 500            # 업로드 영상 최대 크기(MB)
+  live_phone_config: configs/phone_galaxy_s25.yaml  # 실시간 모드에서 쓰는 폰 카메라 설정 파일 (backend 기준 경로). 화각(hfov_deg)이나 초점거리(focal_px)가 들어 있다
+  live_default_speed_kmh: 50.0  # 실시간 모드에서 화면이 내 속도를 보내기 전까지 쓰는 속도(km/h)
   cors_origins:                 # React 개발 서버 주소 (브라우저 접근 허용 목록)
     - http://localhost:5173
 

@@ -17,27 +17,34 @@ export function BoxOverlay({ frame }: { frame: FrameResult | null }) {
   if (!frame || !frame.lead_box_px || frame.distance_m === null) return null
 
   // 2단계: 박스 좌표, 색, 라벨 글자와 배경 폭 준비
+  // 좌표의 기준 크기는 서버가 알려 준 프레임 크기(실시간). 없으면 기본 크기를 쓴다
+  const viewW = frame.frame_w_px ?? FRAME_W_PX
+  const viewH = frame.frame_h_px ?? FRAME_H_PX
+  // 글자·선 크기는 기본 크기(FRAME_W_PX) 기준 값이라, 프레임이 작으면 같은 비율로 줄인다
+  const scale = viewW / FRAME_W_PX
   const [x1, y1, x2, y2] = frame.lead_box_px
   const color = LEVELS[frame.level].color // 박스 색은 경고 단계를 따른다
   const label = `앞차 ${frame.distance_m.toFixed(1)}m`
   // 글자 폭은 정확히 잴 수 없어 글자 수 x 글자 크기 x 0.62로 어림한다 (한글·숫자 혼합 기준)
-  const labelW = label.length * LABEL_FONT_PX * 0.62 + LABEL_PAD_PX * 2
+  const labelW = (label.length * LABEL_FONT_PX * 0.62 + LABEL_PAD_PX * 2) * scale
 
   return (
     // viewBox를 서버 좌표계와 같게 두면 영상이 커지거나 작아져도 박스가 같이 따라간다
     <svg
-      viewBox={`0 0 ${FRAME_W_PX} ${FRAME_H_PX}`}
+      viewBox={`0 0 ${viewW} ${viewH}`}
+      // 실시간(프레임 크기를 서버가 줌)이면 영상이 꽉 채우기(cover)라 박스도 같은 방식(slice)으로 맞춘다
+      preserveAspectRatio={frame.frame_w_px ? 'xMidYMid slice' : 'xMidYMid meet'}
       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
     >
       {/* 3단계: 박스 테두리 */}
-      <rect x={x1} y={y1} width={x2 - x1} height={y2 - y1} fill="none" stroke={color} strokeWidth={BOX_LINE_PX} />
+      <rect x={x1} y={y1} width={x2 - x1} height={y2 - y1} fill="none" stroke={color} strokeWidth={BOX_LINE_PX * scale} />
       {/* 4단계: 박스 위쪽에 거리 라벨 (배경 + 글자) */}
-      <rect x={x1} y={y1 - LABEL_H_PX} width={labelW} height={LABEL_H_PX} fill={color} />
+      <rect x={x1} y={y1 - LABEL_H_PX * scale} width={labelW} height={LABEL_H_PX * scale} fill={color} />
       <text
-        x={x1 + LABEL_PAD_PX}
-        y={y1 - LABEL_H_PX / 2}
+        x={x1 + LABEL_PAD_PX * scale}
+        y={y1 - (LABEL_H_PX * scale) / 2}
         fill="#0a0d12"
-        fontSize={LABEL_FONT_PX}
+        fontSize={LABEL_FONT_PX * scale}
         fontWeight={600}
         dominantBaseline="middle"
       >

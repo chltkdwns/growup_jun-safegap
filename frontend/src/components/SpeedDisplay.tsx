@@ -9,7 +9,7 @@ import './SpeedDisplay.css'
 export function SpeedDisplay({ frame }: { frame: FrameResult | null }) {
   return (
     <div className="speed-display">
-      <b>{frame ? frame.speed_kmh.toFixed(0) : '—'}</b>
+      <b>{frame && frame.speed_kmh !== null ? frame.speed_kmh.toFixed(0) : '—'}</b>
       <span>KM/H</span>
     </div>
   )
