@@ -64,7 +64,6 @@ def main() -> None:
 
     # 1단계: 초점거리 정하기 (인자 → config focal_px → hfov로 계산 순서)
     cap = cv2.VideoCapture(args.video)
-    fps = cap.get(cv2.CAP_PROP_FPS)
     frame_w_px = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     cap.release()
     hfov_deg = args.hfov_deg or cfg["camera"]["hfov_deg"]
@@ -79,7 +78,7 @@ def main() -> None:
         r.model_dump()
         for r in analyze_video(args.video, cfg["perception"]["model"], cfg["perception"])
     ]
-    judge = FrameJudge(cfg["judgment"], fps=fps, focal_px=focal_px)
+    judge = FrameJudge(cfg["judgment"], focal_px=focal_px)
     merged = judge_frames(perceptions, judge, args.speed_kmh)
 
     # 3단계: 저장
