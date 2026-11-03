@@ -2,7 +2,7 @@ from app.judgment.box_utils import box_iou
 from app.judgment.distance import estimate_distance_m
 from app.judgment.level_stabilizer import LevelStabilizer
 from app.judgment.ttc import TTCEstimator
-from app.judgment.warning_level import decide_level
+from app.judgment.warning_level import decide_event, decide_level, safe_distance_m
 
 
 class FrameJudge:
@@ -37,12 +37,19 @@ class FrameJudge:
             return False
         return box_iou(new_box, self.lead_box) >= self.cfg["same_car_iou"]
 
+    def _safe_distance(self, speed_kmh: float | None) -> float | None:
+        """내 속도로 안전거리(m)를 구한다. 속도를 모르면 None."""
+        if speed_kmh is None:
+            return None
+        return round(safe_distance_m(speed_kmh, self.cfg["safe_gap_s"]), 1)
+
+
     def judge_frame(self, perception: dict, speed_kmh: float | None) -> dict:
         """한 프레임의 A→B 결과(perception)를 B→C 형식으로 바꾼다.
 
         입력: perception {"frame", "time", "lead": {"id", "box"} 또는 None, "cut_in"},
               speed_kmh 내 속도(km/h, 모르면 None)
-        출력: {"frame", "speed_kmh", "distance_m", "ttc_s", "level"}
+        출력: {"frame", "speed_kmh", "distance_m", "ttc_s", "level", "rel_speed_mps", "safe_distance_m", "event"}
         """
         lead = perception["lead"]
         
@@ -50,9 +57,8 @@ class FrameJudge:
         time_s = perception["time"]
         if (lead is None and self.last_out is not None
                 and time_s - self.last_seen_s <= self.cfg["max_missing_s"]):
-            # return dict(self.last_out, frame=perception["frame"], speed_kmh=speed_kmh,
-            #             safe_distance_m=self._safe_distance(speed_kmh))
-            return dict(self.last_out, frame=perception["frame"], speed_kmh=speed_kmh)
+            return dict(self.last_out, frame=perception["frame"], speed_kmh=speed_kmh,
+                        safe_distance_m=self._safe_distance(speed_kmh))
         
         # 1) 앞차가 바뀌거나 사라지면 이전 차의 기록을 버림
         new_id = lead["id"] if lead else None
@@ -78,12 +84,20 @@ class FrameJudge:
         )
         level = self.stabilizer.update(raw_level, time_s)
 
+        # 4) 화면에 보여줄 나머지 값: 가까워지는 속도, 안전거리, 경고 이유
+        rel_speed_mps = distance_m / ttc_s if distance_m is not None and ttc_s else 0.0  # TTC = 거리 ÷ 속도를 거꾸로
+        event = decide_event(level, perception["cut_in"], rel_speed_mps, self.cfg["hard_brake_rel_mps"])
+
+
         out = {
             "frame": perception["frame"],
             "speed_kmh": speed_kmh,
             "distance_m": None if distance_m is None else round(distance_m, 1),
             "ttc_s": None if ttc_s is None else round(float(ttc_s), 2),
             "level": level,
+            "rel_speed_mps": round(rel_speed_mps, 2),
+            "safe_distance_m": self._safe_distance(speed_kmh),
+            "event": event,
         }
         self.last_out = out if lead else None  # 앞차가 있을 때만 "유지할 결과"로 기억
         return out

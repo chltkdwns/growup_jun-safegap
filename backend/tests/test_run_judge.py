@@ -21,5 +21,6 @@ def test_judge_file_writes_one_line_per_frame(tmp_path):
     lines = out.read_text(encoding="utf-8").splitlines()
     assert n == len(lines) == 120                     # 4초 × 30fps
     last = json.loads(lines[-1])
-    assert set(last) == {"frame", "speed_kmh", "distance_m", "ttc_s", "level"}
+    assert set(last) == {"frame", "speed_kmh", "distance_m", "ttc_s", "level",
+                         "rel_speed_mps", "safe_distance_m", "event"}
     assert last["level"] == "위험"                    # 마지막엔 10m 남짓까지 접근

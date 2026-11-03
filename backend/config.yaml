@@ -42,6 +42,7 @@ judgment:
   same_car_iou: 0.5
   max_missing_s: 0.2            # 앞차를 이 시간(초) 이내로 놓치면 직전 결과를 유지 (검출 끊김 대비)
   level_hold_s: 0.15            # 낮은 단계가 이 시간(초) 이상 이어져야 화면 단계를 내림 (기존 level_hold_frames: 5 대체)
+  hard_brake_rel_mps: 10.0      # 가까워지는 속도가 이 값(m/s) 이상이면 경고 이유를 "급정거"로 봄
 
 # ---------- C. 통합·서비스 ----------
 api:
