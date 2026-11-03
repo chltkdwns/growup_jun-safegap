@@ -45,7 +45,7 @@ function App() {
         <section className="app-video">
           {/* 세로 화면에서만 보이는 큰 속도 숫자 (영상과 함께 위에 붙는다) */}
           <SpeedDisplay frame={frame} />
-          <VideoPlayer src={import.meta.env.VITE_VIDEO_SRC}>
+          <VideoPlayer src={import.meta.env.VITE_VIDEO_SRC} timeS={frame?.time_s}>
             <BoxOverlay frame={frame} />
             <WarningBadge frame={frame} />
             <EventBanner frame={frame} />

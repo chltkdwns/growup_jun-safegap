@@ -220,6 +220,7 @@ def replay_frame(record: dict, safe_gap_s: float) -> FrameResult:
         safe_distance_m=safe_distance_m,
         level=record["level"],
         event=event,
+        time_s=record["time"],
     )
 
 
@@ -251,7 +252,7 @@ async def replay_frames(websocket: WebSocket, video_id: str) -> None:
 
     사용처: ws_frames()가 mode=replay 연결에서 호출한다.
     입력: websocket 연결, video_id 영상 이름 (outputs/<video_id>.json)
-    출력: FrameResult JSON을 JSON의 time 간격(초)대로 전송
+    출력: FrameResult JSON을 JSON의 time(초)에 맞춰 전송. time_s에 영상 위치를 담는다
     주의: 결과 파일이 없으면 종료 코드 1008로 연결을 닫는다. 화면이 보내는 set_speed는 무시한다
           (속도는 분석할 때 이미 반영됐다).
     """
@@ -265,15 +266,21 @@ async def replay_frames(websocket: WebSocket, video_id: str) -> None:
 
     # 화면이 연결을 끊는 것을 알아채려고 요청 받는 작업을 같이 돌린다
     receiver = asyncio.create_task(receive_commands(websocket, {}))
+    loop = asyncio.get_running_loop()
+    # 마지막 프레임이 화면에 머무는 시간(초). 프레임 간 평균 간격으로 어림한다
+    frame_interval_s = records[-1]["time"] / max(1, len(records) - 1)
     try:
         while not receiver.done():
-            # 2단계: 프레임을 time 간격으로 보낸다. 끝까지 보냈으면 처음부터 다시
-            for current, following in zip(records, records[1:] + records[:1]):
+            # 2단계: 시작 시각을 기준으로 각 프레임의 time에 맞춰 보낸다. 끝까지 보냈으면 처음부터 다시
+            # (프레임마다 sleep하면 전송 시간이 쌓여 영상보다 느려지므로 시작 시각 기준으로 기다린다)
+            started_s = loop.time()
+            for record in records:
                 if receiver.done():
                     break
-                await websocket.send_text(replay_frame(current, safe_gap_s).model_dump_json())
-                # 마지막 프레임 다음은 처음 프레임이라 간격이 음수가 되므로 0 이상으로 맞춘다
-                await asyncio.sleep(max(0.0, following["time"] - current["time"]))
+                await asyncio.sleep(max(0.0, started_s + record["time"] - loop.time()))
+                await websocket.send_text(replay_frame(record, safe_gap_s).model_dump_json())
+            # 마지막 프레임 길이만큼 더 기다려야 영상 길이와 반복 주기가 같다
+            await asyncio.sleep(max(0.0, started_s + records[-1]["time"] + frame_interval_s - loop.time()))
     except WebSocketDisconnect:
         pass
     finally:

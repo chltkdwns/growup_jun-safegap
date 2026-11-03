@@ -12,6 +12,7 @@ export interface FrameResult {
   safe_distance_m: number // 안전거리(m)
   level: Level // 경고 단계 (서버가 판정)
   event: EventType | null // 경고가 나온 이유. 단계가 safe이면 null
+  time_s: number | null // 이 프레임의 영상 위치(초). 재생 모드에서만 값이 있다
 }
 
 // .env의 VITE_WS_URL이 없을 때 쓰는 기본 주소 (로컬 개발용)

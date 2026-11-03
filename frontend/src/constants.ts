@@ -35,5 +35,9 @@ export const EVENTS: Record<EventType, string> = {
   hard_brake: '앞차가 급정거했어요',
 }
 
+// 서버가 알려 준 영상 위치와 실제 영상 재생 위치가 이만큼(초) 넘게 벌어지면 영상 위치를 서버에 맞춘다.
+// 너무 작으면 되감기가 잦아 끊겨 보이고, 너무 크면 박스가 영상보다 앞서거나 뒤처져 보인다.
+export const VIDEO_SYNC_TOLERANCE_S = 0.15
+
 // 배너 문구를 최소로 유지하는 시간(ms). 순간적으로 스쳐 지나가는 문구도 읽을 수 있게 한다.
 export const EVENT_HOLD_MS = 2000

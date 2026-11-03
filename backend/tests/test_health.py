@@ -138,6 +138,7 @@ def test_replay_frame_derives_screen_fields() -> None:
     assert abs(frame.safe_distance_m - 33.3) < 0.1  # 60km/h = 16.67m/s x 2초
     assert frame.lead_box_px == (100.0, 200.0, 300.0, 400.0)
     assert frame.event == "hard_brake"  # 가까워지는 속도 10m/s 이상
+    assert frame.time_s == 0.0  # 영상 위치가 같이 나간다
 
 
 def test_replay_frame_without_lead() -> None:

@@ -88,3 +88,5 @@ class FrameResult(BaseModel):
     level: Level
     # 경고가 나온 이유. 단계가 정상이면 None
     event: EventType | None
+    # 이 프레임이 영상의 몇 초 지점인지(초). 화면이 영상 위치를 맞추는 데 쓴다. 재생 모드에서만 채우고 mock은 None
+    time_s: float | None = None
