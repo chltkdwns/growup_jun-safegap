@@ -88,6 +88,7 @@ class PerceptionStream:
             self.perception_cfg["conf_threshold"],
             self.perception_cfg["tracker"],
             self.perception_cfg["nms_iou"],
+            self.perception_cfg["imgsz"],
         )
         return perceive_frame(
             self.last_tracks,
