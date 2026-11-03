@@ -10,7 +10,7 @@ VEHICLE_CLASS_IDS = [2, 5, 7]
 def load_detector(weights_path: str) -> YOLO:
     """사전학습 YOLO 모델을 불러온다.
 
-    사용처: pipeline.analyze_video()가 영상 하나에 한 번 호출한다.
+    사용처: pipeline.PerceptionStream이 만들어질 때 한 번 호출한다.
     입력: weights_path 가중치 파일 경로 (config의 perception.model)
     출력: YOLO 모델
     주의: 트래커 상태가 모델 안에 남으므로 영상마다 새로 불러온다.
@@ -21,7 +21,7 @@ def load_detector(weights_path: str) -> YOLO:
 def crop_hood(frame: np.ndarray, hood_ratio: float) -> np.ndarray:
     """화면 아래쪽 본넷 영역을 잘라낸다.
 
-    사용처: pipeline.analyze_video()가 검출 전에 매 프레임 호출한다.
+    사용처: pipeline.PerceptionStream.process()가 검출 전에 매 프레임 호출한다.
     입력: frame (H, W, 3) BGR 이미지, hood_ratio 본넷 높이 비율 (0~1, config)
     출력: 위쪽만 남긴 이미지. 위에서부터 자르므로 박스 좌표는 원본과 같다.
     """
@@ -36,16 +36,19 @@ def track_vehicles(
     conf_threshold: float,
     tracker: str,
     nms_iou: float,
+    imgsz: int,
 ) -> dict[int, list[float]]:
     """한 프레임에서 차량을 검출하고 트래킹 ID를 붙인다.
 
-    사용처: A(인식) 단계. pipeline.analyze_video()가 매 프레임 호출한다.
+    사용처: A(인식) 단계. pipeline.PerceptionStream.process()가 매 프레임 호출한다.
     입력: model YOLO 모델, frame 본넷을 자른 BGR 이미지,
           conf_threshold 검출 신뢰도 최소값 (0~1), tracker 트래커 설정 파일 이름,
-          nms_iou 겹친 박스 중복 제거 기준 (0~1, config)
-    출력: {트래킹 ID: [x1, y1, x2, y2] (px)}
+          nms_iou 겹친 박스 중복 제거 기준 (0~1, config),
+          imgsz 검출 전에 이미지를 줄이는 크기 (px, 긴 변 기준, config)
+    출력: {트래킹 ID: [x1, y1, x2, y2] (px)}. 박스 좌표는 원본 프레임 기준이다.
     주의: 트래커가 아직 ID를 붙이지 않은 박스는 결과에서 빠진다.
           nms_iou가 너무 낮으면 바짝 붙은 서로 다른 차도 하나로 합쳐질 수 있다.
+          imgsz가 클수록 먼 차를 더 잡지만 느려진다 (GTX 1060에서 640 약 19ms, 960 약 23ms).
     """
     # persist=True: 이전 프레임의 트래킹 상태를 이어서 써서 같은 차에 같은 ID를 붙인다
     # agnostic_nms=True: 같은 차를 car/truck 두 클래스로 잡은 중복 박스도 하나로 합친다
@@ -57,6 +60,7 @@ def track_vehicles(
         conf=conf_threshold,
         iou=nms_iou,
         agnostic_nms=True,
+        imgsz=imgsz,
         verbose=False,
     )[0]
     if result.boxes.id is None:
