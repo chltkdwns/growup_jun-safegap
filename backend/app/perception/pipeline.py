@@ -29,7 +29,7 @@ def perceive_frame(
     """
     lead_id = lead_selector.select(tracks, center_x_px)
     lead = LeadCar(id=lead_id, box=tracks[lead_id]) if lead_id is not None else None
-    cut_in = cut_in_detector.update(tracks, center_x_px, frame_w_px)
+    cut_in = cut_in_detector.update(tracks, center_x_px, frame_w_px, time_s)
     return PerceptionFrame(frame=frame_idx, time=time_s, lead=lead, cut_in=cut_in)
 
 
@@ -63,7 +63,7 @@ class PerceptionStream:
             perception_cfg["lead_switch_area_ratio"],
         )
         self.cut_in_detector = CutInDetector(
-            perception_cfg["cut_in_frames"],
+            perception_cfg["cut_in_window_s"],
             self.car_width_m,
             perception_cfg["lane_half_width_m"],
             perception_cfg["cut_in_zone_m"],
