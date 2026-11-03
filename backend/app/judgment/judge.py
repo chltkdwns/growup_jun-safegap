@@ -17,8 +17,7 @@ class FrameJudge:
     def __init__(self, cfg_judgment: dict, fps: float, focal_px: float):
         self.cfg = cfg_judgment
         self.focal_px = focal_px
-        window_frames = max(3, round(cfg_judgment["ttc_window_s"] * fps))  # 초 → 프레임 수
-        self.ttc = TTCEstimator(fps, window_frames, cfg_judgment["max_ttc_s"])
+        self.ttc = TTCEstimator(cfg_judgment["ttc_window_s"], cfg_judgment["max_ttc_s"])
         self.stabilizer = LevelStabilizer(cfg_judgment["level_hold_frames"])
         self.lead_id = None   # 지금 따라가고 있는 앞차 ID
         self.lead_box = None  # 직전 프레임의 앞차 박스 (id가 바뀌어도 같은 차인지 확인용)
@@ -68,7 +67,7 @@ class FrameJudge:
             x1, _, x2, _ = lead["box"]
             box_w_px = x2 - x1
             distance_m = estimate_distance_m(box_w_px, self.focal_px, self.cfg["car_width_m"])
-            ttc_s = self.ttc.update(box_w_px)
+            ttc_s = self.ttc.update(box_w_px, perception["time"])  # 실제 촬영 시각 사용
 
         # 3) 경고 단계를 정하고 깜빡임을 막음
         raw_level = decide_level(
