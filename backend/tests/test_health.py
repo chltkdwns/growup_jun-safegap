@@ -1,11 +1,13 @@
 from app.main import (
     MOCK_HARD_BRAKE_REL_MPS,
+    MOCK_SPEED_KMH,
     app,
     mock_approach,
     mock_cut_in,
     mock_event,
     mock_hard_brake,
     mock_level,
+    replay_frame,
 )
 from fastapi.testclient import TestClient
 
@@ -70,12 +72,12 @@ def read_until_speed(ws, speed_kmh: float, max_frames: int = 20) -> dict | None:
 def test_ws_set_speed_changes_safe_distance() -> None:
     """set_speed를 보내면 속도와 안전거리(속도 x 2초)가 따라 바뀌는지 확인한다."""
     with client.websocket_connect("/ws") as ws:
-        ws.send_json({"type": "set_speed", "speed_kmh": 50})
-        frame = read_until_speed(ws, 50.0)
+        ws.send_json({"type": "set_speed", "speed_kmh": 80})
+        frame = read_until_speed(ws, 80.0)
 
     assert frame is not None
-    # 50km/h = 13.89m/s, x 2초 = 27.8m
-    assert abs(frame["safe_distance_m"] - 27.8) < 0.1
+    # 80km/h = 22.22m/s, x 2초 = 44.4m (기본 속도와 다른 값을 써야 "바뀌었다"를 확인할 수 있다)
+    assert abs(frame["safe_distance_m"] - 44.4) < 0.1
 
 
 def test_ws_ignores_invalid_set_speed() -> None:
@@ -86,7 +88,7 @@ def test_ws_ignores_invalid_set_speed() -> None:
         ws.send_text("not json")
         frames = [ws.receive_json() for _ in range(5)]
 
-    assert all(f["speed_kmh"] == 100.0 for f in frames)
+    assert all(f["speed_kmh"] == MOCK_SPEED_KMH for f in frames)
 
 
 def test_mock_level_cut_in_raises_one_level() -> None:
@@ -111,3 +113,51 @@ def test_mock_situations_cover_each_event() -> None:
     assert len(list(mock_approach())) > 0
     assert any(cut_in for _, _, cut_in in mock_cut_in())
     assert any(rel >= MOCK_HARD_BRAKE_REL_MPS for _, rel, _ in mock_hard_brake())
+
+
+def make_record(**changes) -> dict:
+    """재생 테스트용 프레임 하나 (앞차 있음, 거리 30m, TTC 3초, 60km/h)를 만든다."""
+    record = {
+        "frame": 0,
+        "time": 0.0,
+        "lead": {"id": 1, "box": [100.0, 200.0, 300.0, 400.0]},
+        "cut_in": False,
+        "speed_kmh": 60.0,
+        "distance_m": 30.0,
+        "ttc_s": 3.0,
+        "level": "경고",
+    }
+    return {**record, **changes}
+
+
+def test_replay_frame_derives_screen_fields() -> None:
+    """거리 ÷ TTC로 상대 속도, 속도 x 안전거리 초로 안전거리를 구하는지 확인한다."""
+    frame = replay_frame(make_record(), safe_gap_s=2.0)
+
+    assert frame.rel_speed_mps == 10.0  # 30m ÷ 3초
+    assert abs(frame.safe_distance_m - 33.3) < 0.1  # 60km/h = 16.67m/s x 2초
+    assert frame.lead_box_px == (100.0, 200.0, 300.0, 400.0)
+    assert frame.event == "hard_brake"  # 가까워지는 속도 10m/s 이상
+
+
+def test_replay_frame_without_lead() -> None:
+    """앞차가 없으면 거리·박스·TTC는 None, 상대 속도는 0인지 확인한다."""
+    record = make_record(lead=None, distance_m=None, ttc_s=None, level="정상")
+    frame = replay_frame(record, safe_gap_s=2.0)
+
+    assert frame.distance_m is None
+    assert frame.lead_box_px is None
+    assert frame.ttc_s is None
+    assert frame.rel_speed_mps == 0.0
+    assert frame.event is None
+
+
+def test_ws_replay_rejects_unknown_video() -> None:
+    """없는 영상 이름이나 ../ 가 섞인 이름은 연결을 닫는지 확인한다."""
+    import pytest
+    from starlette.websockets import WebSocketDisconnect
+
+    for video_id in ("no_such_video", "..%2Fconfig"):
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect(f"/ws?mode=replay&video_id={video_id}") as ws:
+                ws.receive_json()

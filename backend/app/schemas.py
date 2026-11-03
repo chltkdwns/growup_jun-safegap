@@ -76,7 +76,7 @@ class FrameResult(BaseModel):
 
     """
 
-    distance_m: float  # 앞차까지 거리(m)
+    distance_m: float | None  # 앞차까지 거리(m). 앞차가 없으면 None
     # 앞차 박스 (x1, y1, x2, y2), 화면 픽셀. 앞차가 없으면 None
     lead_box_px: tuple[float, float, float, float] | None
     speed_kmh: float  # 내 속도(km/h)

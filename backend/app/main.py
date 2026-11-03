@@ -1,10 +1,14 @@
 import asyncio
 import itertools
+import json
+import re
 from collections.abc import Iterator
+from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
+from app.config import load_config
 from app.schemas import LEVEL_ORDER, EventType, FrameResult, Level, SetSpeed
 
 # ---- mock 값 ----
@@ -20,7 +24,7 @@ MOCK_CAR_H_M = 1.45  # 앞차 실제 높이(m)
 MOCK_CAM_H_M = 1.35  # 카메라 높이(m): 박스 아래 변 위치 계산용
 MOCK_CENTER_X_PX = 960.0  # 화면 가로 중앙(px). 박스가 이 선 위에 선다
 MOCK_HORIZON_Y_PX = 470.0  # 지평선 높이(px). 먼 차일수록 박스가 이 선에 가까워진다
-MOCK_SPEED_KMH = 100.0  # 내 속도(km/h). 지금은 고정값
+MOCK_SPEED_KMH = 50.0  # 내 속도(km/h). 지금은 고정값
 MOCK_SAFE_GAP_S = 2.0  # 안전거리 계산에 쓰는 초 (config의 안전거리 초)
 MOCK_TTC_WARNING_S = 3.0  # TTC가 이 값 이하면 경고(초)
 MOCK_TTC_DANGER_S = 1.5  # TTC가 이 값 이하면 위험(초)
@@ -39,6 +43,11 @@ MOCK_BRAKE_MAX_REL_MPS = 15.0  # 가까워지는 속도의 상한(m/s)
 
 # 바뀌지 않는 단위 변환
 KMH_TO_MS = 1 / 3.6
+
+# 재생 모드: /ws?mode=replay&video_id=<영상 이름> 으로 연결하면 outputs/<영상 이름>.json을 재생한다
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+VIDEO_ID_PATTERN = re.compile(r"^[\w.\-]+$")  # 경로 이동(../)을 막으려고 글자·숫자·.-_ 만 허용
+WS_POLICY_VIOLATION = 1008  # 잘못된 요청으로 연결을 닫을 때 쓰는 WebSocket 종료 코드
 
 # uvicorn이 `app.main:app`으로 이 객체를 찾아 실행한다
 app = FastAPI(title="BreakTime API")
@@ -148,10 +157,10 @@ def mock_level(
 def mock_event(level: Level, cut_in: bool, rel_speed_mps: float) -> EventType | None:
     """경고가 나온 이유를 고른다 (화면 배너 문구용).
 
-    사용처: ws_frames()가 매 프레임 event를 만들 때 호출한다.
+    사용처: ws_frames()가 mock 프레임을, replay_frame()이 재생 프레임을 만들 때 호출한다.
     입력: level 경고 단계, cut_in 끼어들기 여부, rel_speed_mps 가까워지는 속도(m/s)
     출력: "cut_in" / "hard_brake" / "gap_short" 중 하나. 안전이면 None
-    주의: mock 전용. 급정거는 브레이크등이 아니라 가까워지는 속도가 급히 커진 것으로 본다.
+    주의: 급정거는 브레이크등이 아니라 가까워지는 속도가 급히 커진 것으로 본다.
     """
     # 안전하면 알릴 이유가 없다
     if level == "정상":
@@ -162,6 +171,56 @@ def mock_event(level: Level, cut_in: bool, rel_speed_mps: float) -> EventType | 
     if rel_speed_mps >= MOCK_HARD_BRAKE_REL_MPS:
         return "hard_brake"
     return "gap_short"
+
+
+def load_replay(video_id: str) -> list[dict]:
+    """분석 결과 JSON(outputs/<video_id>.json)을 읽어 프레임 dict 리스트로 돌려준다.
+
+    사용처: ws_frames()가 재생 모드 연결 때 한 번 호출한다.
+    입력: video_id 영상 이름 (확장자 제외). scripts/analyze_and_judge.py가 저장한 파일 이름과 같다
+    출력: 프레임별 {"frame", "time", "lead", "cut_in", "speed_kmh", "distance_m", "ttc_s", "level"}
+    주의: 형식이 안 맞는 이름이거나 파일이 없으면 FileNotFoundError를 낸다 (바깥에서 연결을 닫는다).
+    """
+    # 1단계: 이름 검사 (화면이 보낸 값이라 믿지 않는다)
+    if not VIDEO_ID_PATTERN.fullmatch(video_id):
+        raise FileNotFoundError(video_id)
+    # 2단계: 설정의 결과 폴더에서 파일을 읽는다
+    output_dir = BACKEND_DIR / load_config()["paths"]["output_dir"]
+    with open(output_dir / f"{video_id}.json", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def replay_frame(record: dict, safe_gap_s: float) -> FrameResult:
+    """재생할 프레임 하나(A+B 합친 결과)를 화면용 FrameResult로 바꾼다.
+
+    사용처: ws_frames()가 재생 모드에서 매 프레임 호출한다.
+    입력: record load_replay()가 돌려준 프레임 하나, safe_gap_s 안전거리 초 (config)
+    출력: FrameResult. 앞차가 없으면 distance_m·lead_box_px·ttc_s는 None
+    주의: 가까워지는 속도는 거리 ÷ TTC로 되돌려 구한다 (B가 TTC를 1/박스 폭 직선으로 구하므로 서로 어긋나지 않는다).
+          내 속도가 JSON에 없으면 0으로 본다.
+    """
+    # 1단계: 앞차가 있는지에 따라 값 꺼내기
+    lead = record["lead"]
+    distance_m = record["distance_m"]
+    ttc_s = record["ttc_s"]
+    lead_box_px = tuple(lead["box"]) if lead else None
+    speed_kmh = record["speed_kmh"] or 0.0
+
+    # 2단계: 화면에 필요한 나머지 값 계산
+    rel_speed_mps = distance_m / ttc_s if distance_m is not None and ttc_s else 0.0
+    safe_distance_m = speed_kmh * KMH_TO_MS * safe_gap_s
+    event = mock_event(record["level"], record["cut_in"], rel_speed_mps)
+
+    return FrameResult(
+        distance_m=distance_m,
+        lead_box_px=lead_box_px,
+        speed_kmh=speed_kmh,
+        rel_speed_mps=rel_speed_mps,
+        ttc_s=ttc_s,
+        safe_distance_m=safe_distance_m,
+        level=record["level"],
+        event=event,
+    )
 
 
 async def receive_commands(websocket: WebSocket, state: dict[str, float]) -> None:
@@ -187,6 +246,40 @@ async def receive_commands(websocket: WebSocket, state: dict[str, float]) -> Non
         pass
 
 
+async def replay_frames(websocket: WebSocket, video_id: str) -> None:
+    """저장된 분석 결과를 영상 시간에 맞춰 화면에 보낸다. 끝나면 처음부터 반복한다.
+
+    사용처: ws_frames()가 mode=replay 연결에서 호출한다.
+    입력: websocket 연결, video_id 영상 이름 (outputs/<video_id>.json)
+    출력: FrameResult JSON을 JSON의 time 간격(초)대로 전송
+    주의: 결과 파일이 없으면 종료 코드 1008로 연결을 닫는다. 화면이 보내는 set_speed는 무시한다
+          (속도는 분석할 때 이미 반영됐다).
+    """
+    # 1단계: 결과 파일 읽기. 없으면 연결 종료
+    try:
+        records = load_replay(video_id)
+    except FileNotFoundError:
+        await websocket.close(code=WS_POLICY_VIOLATION)
+        return
+    safe_gap_s = load_config()["judgment"]["safe_gap_s"]
+
+    # 화면이 연결을 끊는 것을 알아채려고 요청 받는 작업을 같이 돌린다
+    receiver = asyncio.create_task(receive_commands(websocket, {}))
+    try:
+        while not receiver.done():
+            # 2단계: 프레임을 time 간격으로 보낸다. 끝까지 보냈으면 처음부터 다시
+            for current, following in zip(records, records[1:] + records[:1]):
+                if receiver.done():
+                    break
+                await websocket.send_text(replay_frame(current, safe_gap_s).model_dump_json())
+                # 마지막 프레임 다음은 처음 프레임이라 간격이 음수가 되므로 0 이상으로 맞춘다
+                await asyncio.sleep(max(0.0, following["time"] - current["time"]))
+    except WebSocketDisconnect:
+        pass
+    finally:
+        receiver.cancel()
+
+
 @app.websocket("/ws")
 async def ws_frames(websocket: WebSocket) -> None:
     """가짜 주행 상황(접근, 끼어들기, 급정거)을 프레임처럼 계속 보낸다.
@@ -196,8 +289,12 @@ async def ws_frames(websocket: WebSocket) -> None:
     출력: FrameResult JSON을 MOCK_INTERVAL_S마다 전송
     주의: 실제 분석 결과가 아닌 mock이다. 상황이 끝나면 다음 상황으로 넘어가고, 셋을 끝내면 처음부터 반복한다.
     """
-    # 1단계: 연결 수락. 세 가지 상황(접근, 끼어들기, 급정거)을 차례로 계속 돌린다
+    # 1단계: 연결 수락. mode=replay이면 저장된 분석 결과를 재생한다
     await websocket.accept()
+    if websocket.query_params.get("mode") == "replay":
+        await replay_frames(websocket, websocket.query_params.get("video_id", ""))
+        return
+    # 세 가지 상황(접근, 끼어들기, 급정거)을 차례로 계속 돌린다
     situations = itertools.chain.from_iterable(
         factory()
         for factory in itertools.cycle([mock_approach, mock_cut_in, mock_hard_brake])
