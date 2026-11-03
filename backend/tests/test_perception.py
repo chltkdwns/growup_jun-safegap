@@ -17,6 +17,7 @@ SWITCH_RATIO = 1.3  # 새 후보가 현재 앞차보다 넓이가 이 배 이상
 ZONE_M = 2.0
 MOVE_M = 0.3
 MIN_BOX_W_PX = 40
+FPS = 30.0  # 테스트 박스를 이 속도로 들어온 프레임으로 본다
 
 
 def box_at(center_x: float, width: float = 100) -> list[float]:
@@ -25,13 +26,23 @@ def box_at(center_x: float, width: float = 100) -> list[float]:
 
 
 def make_detector(approach_frames: int) -> CutInDetector:
-    """차선 반폭 1.7m, 바깥 2m 안에서 0.3m 이상 다가와야 끼어들기로 보는 테스트용 판단기."""
-    return CutInDetector(approach_frames, CAR_W_M, LANE_HALF_M, ZONE_M, MOVE_M, MIN_BOX_W_PX)
+    """차선 반폭 1.7m, 바깥 2m 안에서 0.3m 이상 다가와야 끼어들기로 보는 테스트용 판단기.
+
+    관찰 시간은 FPS에서 approach_frames 프레임에 해당하는 시간이다.
+    """
+    return CutInDetector(
+        approach_frames / FPS, CAR_W_M, LANE_HALF_M, ZONE_M, MOVE_M, MIN_BOX_W_PX
+    )
 
 
-def run(detector: CutInDetector, boxes: list[list[float]]) -> list[bool]:
-    """같은 차(ID 1)의 박스를 프레임 순서대로 넣고 프레임별 결과를 돌려준다."""
-    return [detector.update({1: b}, CENTER_X_PX, FRAME_W_PX) for b in boxes]
+def run(
+    detector: CutInDetector, boxes: list[list[float]], fps: float = FPS
+) -> list[bool]:
+    """같은 차(ID 1)의 박스를 fps 간격의 프레임 순서대로 넣고 프레임별 결과를 돌려준다."""
+    return [
+        detector.update({1: b}, CENTER_X_PX, FRAME_W_PX, i / fps)
+        for i, b in enumerate(boxes)
+    ]
 
 
 def test_lateral_offset_uses_box_width_as_scale():
@@ -160,16 +171,47 @@ def test_no_cut_in_for_box_clipped_at_frame_edge():
 
 def test_no_cut_in_for_car_already_inside_or_moving_away():
     detector = make_detector(2)
-    for x in [650, 660, 670]:  # 바깥에서 멀어짐
+    for i, x in enumerate([650, 660, 670]):  # 바깥에서 멀어짐
         tracks = {1: box_at(x), 2: box_at(500)}
-        assert detector.update(tracks, CENTER_X_PX, FRAME_W_PX) is False
+        assert detector.update(tracks, CENTER_X_PX, FRAME_W_PX, i / FPS) is False
+
+
+def test_same_motion_is_cut_in_at_any_fps():
+    # 초당 2.16m(프레임당 0.072m@30fps)로 다가오는 같은 움직임을 fps만 바꿔 넣는다.
+    # 15fps는 30fps 프레임의 2장마다, 10fps는 3장마다 하나씩 뽑은 것이다
+    detector_30 = CutInDetector(5 / FPS, CAR_W_M, LANE_HALF_M, ZONE_M, MOVE_M, MIN_BOX_W_PX)
+    xs_30 = [640, 636, 632, 628, 624, 620, 616, 612, 608, 604, 600]  # 2.52m에서 시작
+    assert any(run(detector_30, [box_at(x) for x in xs_30], fps=30))
+    detector_15 = CutInDetector(5 / FPS, CAR_W_M, LANE_HALF_M, ZONE_M, MOVE_M, MIN_BOX_W_PX)
+    assert any(run(detector_15, [box_at(x) for x in xs_30[::2]], fps=15))
+    detector_10 = CutInDetector(5 / FPS, CAR_W_M, LANE_HALF_M, ZONE_M, MOVE_M, MIN_BOX_W_PX)
+    assert any(run(detector_10, [box_at(x) for x in xs_30[::3]], fps=10))
+
+
+def test_slow_approach_over_longer_time_is_not_cut_in():
+    # 관찰 시간(0.17초) 동안 0.3m가 안 되는 느린 접근은 끼어들기가 아니다.
+    # 30fps에서 프레임당 0.018m씩, 0.17초 동안 0.09m만 다가온다
+    xs = [640 - i for i in range(20)]
+    assert not any(run(make_detector(5), [box_at(x) for x in xs]))
+
+
+def test_irregular_frame_interval_uses_time_not_frame_count():
+    # 프레임이 0.05초 간격으로 들어와도(20fps), 0.17초 이상 지난 기록과 비교해 같은 움직임을 잡는다
+    detector = CutInDetector(5 / FPS, CAR_W_M, LANE_HALF_M, ZONE_M, MOVE_M, MIN_BOX_W_PX)
+    times_s = [0.0, 0.05, 0.10, 0.15, 0.20, 0.25]
+    xs = [640, 637, 634, 631, 625, 619]  # 마지막 프레임에서 0.2초 전(637)보다 0.32m 안쪽
+    flags = [
+        detector.update({1: box_at(x)}, CENTER_X_PX, FRAME_W_PX, t)
+        for x, t in zip(xs, times_s)
+    ]
+    assert flags[-1] is True
 
 
 def test_perceive_frame_matches_interface():
     result = perceive_frame(
         {3: box_at(500)},
         frame_idx=120,
-        fps=30.0,
+        time_s=4.0,
         center_x_px=CENTER_X_PX,
         lead_selector=make_selector(),
         cut_in_detector=make_detector(5),
