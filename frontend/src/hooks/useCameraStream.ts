@@ -7,7 +7,9 @@ export interface RoundTrip {
   p95: number
 }
 
-const FRAME_HEADER_BYTES = 4 // 프레임 메시지 앞 4바이트 = 프레임 번호. 서버 main.py의 FRAME_HEADER_BYTES와 같아야 한다
+// 프레임 메시지 = 앞 4바이트 프레임 번호 + 4바이트 촬영 시각(ms) + JPEG. 서버 main.py의 FRAME_HEADER_BYTES와 같아야 한다
+const FRAME_INDEX_BYTES = 4
+const FRAME_HEADER_BYTES = 8
 const RTT_WINDOW = 100 // 왕복 시간을 이만큼(개) 모아 백분위를 구한다
 const RTT_REPORT_EVERY = 15 // 결과가 이 개수만큼 올 때마다 백분위를 갱신한다 (화면을 너무 자주 다시 그리지 않으려고)
 const PENDING_LIMIT = 200 // 결과를 못 받은 보낸 기록을 이만큼만 들고 있는다 (서버가 프레임을 버리면 쌓이므로)
@@ -87,6 +89,7 @@ export function useCameraStream(
     const canvas = document.createElement('canvas')
     const sentAt = sentAtRef.current
     let frameIdx = 0
+    const startedMs = performance.now() // 촬영 시각은 카메라를 켠 뒤 지난 시간(ms)으로 보낸다
     let inFlight = false // 이전 프레임을 아직 만드는 중이면 건너뛴다
 
     const timer = setInterval(() => {
@@ -96,15 +99,18 @@ export function useCameraStream(
       canvas.width = Math.round(video.videoWidth * scale)
       canvas.height = Math.round(video.videoHeight * scale)
       canvas.getContext('2d')?.drawImage(video, 0, 0, canvas.width, canvas.height)
+      const capturedMs = Math.round(performance.now() - startedMs) // 이 프레임을 찍은 시각
       inFlight = true
       canvas.toBlob(
         async (blob) => {
           try {
             if (!blob) return
-            // 메시지 = 앞 4바이트 프레임 번호 + JPEG
+            // 메시지 = 프레임 번호 + 촬영 시각(ms) + JPEG
             const jpeg = await blob.arrayBuffer()
             const message = new Uint8Array(FRAME_HEADER_BYTES + jpeg.byteLength)
-            new DataView(message.buffer).setUint32(0, frameIdx)
+            const header = new DataView(message.buffer)
+            header.setUint32(0, frameIdx)
+            header.setUint32(FRAME_INDEX_BYTES, capturedMs)
             message.set(new Uint8Array(jpeg), FRAME_HEADER_BYTES)
             if (sendFrameRef.current(message.buffer)) {
               sentAt.set(frameIdx, performance.now())

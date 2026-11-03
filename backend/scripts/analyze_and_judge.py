@@ -16,7 +16,7 @@ import cv2
 import yaml
 
 from app.config import load_config
-from app.judgment.distance import focal_px_from_hfov
+from app.judgment.distance import resolve_focal_px
 from app.judgment.judge import FrameJudge
 from app.perception.pipeline import analyze_video
 
@@ -62,24 +62,25 @@ def main() -> None:
         with open(args.camera, encoding="utf-8") as f:
             cfg["perception"].update(yaml.safe_load(f))
 
-    # 1단계: 초점거리 정하기 (인자 → config focal_px → hfov로 계산 순서)
+    # 1단계: 초점거리 정하기 (인자가 config의 camera 값보다 먼저, focal_px가 hfov보다 먼저)
     cap = cv2.VideoCapture(args.video)
-    fps = cap.get(cv2.CAP_PROP_FPS)
     frame_w_px = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     cap.release()
-    hfov_deg = args.hfov_deg or cfg["camera"]["hfov_deg"]
-    focal_px = args.focal_px or cfg["camera"]["focal_px"]
-    if focal_px is None and hfov_deg is not None:
-        focal_px = focal_px_from_hfov(frame_w_px, hfov_deg)
-    if focal_px is None:
+    camera_cfg = dict(cfg["camera"])
+    if args.focal_px is not None:
+        camera_cfg["focal_px"] = args.focal_px
+    if args.hfov_deg is not None:
+        camera_cfg["hfov_deg"] = args.hfov_deg
+    if not (camera_cfg.get("focal_px") or camera_cfg.get("hfov_deg")):
         sys.exit("초점거리가 없어요. --focal-px나 --hfov-deg를 주거나 config.yaml의 camera를 채워 주세요.")
+    focal_px = resolve_focal_px(camera_cfg, frame_w_px)
 
     # 2단계: A(인식) → B(판단) 순서로 돌려 합친다
     perceptions = [
         r.model_dump()
         for r in analyze_video(args.video, cfg["perception"]["model"], cfg["perception"])
     ]
-    judge = FrameJudge(cfg["judgment"], fps=fps, focal_px=focal_px)
+    judge = FrameJudge(cfg["judgment"], focal_px=focal_px)
     merged = judge_frames(perceptions, judge, args.speed_kmh)
 
     # 3단계: 저장

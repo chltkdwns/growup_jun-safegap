@@ -12,7 +12,7 @@ export function InfoPanel({ frame }: { frame: FrameResult | null }) {
   const distance = frame && frame.distance_m !== null ? frame.distance_m.toFixed(1) : '—'
   const relSpeed = frame ? (frame.rel_speed_mps * MS_TO_KMH).toFixed(0) : '—'
   const ttc = frame && frame.ttc_s !== null ? frame.ttc_s.toFixed(1) : '—'
-  const safeDistance = frame ? frame.safe_distance_m.toFixed(1) : '—'
+  const safeDistance = frame && frame.safe_distance_m !== null ? frame.safe_distance_m.toFixed(1) : '—'
 
   // 2단계: 단계 색 (경고·위험일 때 TTC 숫자에 단계 색을 입힌다)
   const level = frame ? LEVELS[frame.level] : null

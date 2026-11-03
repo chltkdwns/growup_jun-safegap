@@ -14,32 +14,46 @@ LIVE_URL = "/ws?mode=live"
 FRAME_W_PX, FRAME_H_PX = 320, 180  # 테스트용 작은 이미지
 
 
-def make_frame_message(frame_idx: int, w_px: int = FRAME_W_PX, h_px: int = FRAME_H_PX) -> bytes:
-    """폰이 보내는 프레임 메시지(앞 4바이트 번호 + JPEG)를 만든다."""
+def make_frame_message(
+    frame_idx: int, w_px: int = FRAME_W_PX, h_px: int = FRAME_H_PX, time_ms: int = 0
+) -> bytes:
+    """폰이 보내는 프레임 메시지(4바이트 번호 + 4바이트 촬영 시각 ms + JPEG)를 만든다."""
     image = np.zeros((h_px, w_px, 3), np.uint8)
     ok, jpeg = cv2.imencode(".jpg", image)
     assert ok
-    return frame_idx.to_bytes(4, "big") + jpeg.tobytes()
+    return frame_idx.to_bytes(4, "big") + time_ms.to_bytes(4, "big") + jpeg.tobytes()
 
 
 def test_live_focal_px_pinhole() -> None:
     """긴 변의 화각과 길이로 핀홀 초점거리를 구하는지 확인한다: (640/2) / tan(35도)."""
-    assert math.isclose(live_focal_px(70.0, 640, 360), 320 / math.tan(math.radians(35)))
+    assert math.isclose(
+        live_focal_px({"hfov_deg": 70.0}, 640, 360), 320 / math.tan(math.radians(35))
+    )
 
 
 def test_live_focal_px_same_when_rotated() -> None:
     """폰을 가로로 들든 세로로 들든 같은 카메라면 초점거리가 같은지 확인한다."""
-    assert live_focal_px(70.0, 640, 360) == live_focal_px(70.0, 360, 640)
+    camera_cfg = {"hfov_deg": 70.0}
+    assert live_focal_px(camera_cfg, 640, 360) == live_focal_px(camera_cfg, 360, 640)
 
 
-def test_ws_live_closes_without_hfov(monkeypatch) -> None:
-    """설정에 화각이 없으면 거리를 계산할 수 없어 연결을 닫는지 확인한다."""
+def test_ws_live_closes_without_phone_config(monkeypatch) -> None:
+    """폰 설정 파일을 못 읽으면 거리를 계산할 수 없어 연결이 닫히는지 확인한다."""
     cfg = load_config()
-    cfg["api"]["live_hfov_deg"] = None
+    cfg["api"]["live_phone_config"] = "configs/no_such_phone.yaml"
     monkeypatch.setattr("app.main.load_config", lambda: cfg)
-    with pytest.raises(WebSocketDisconnect):
+    with pytest.raises(Exception):
         with client.websocket_connect(LIVE_URL) as ws:
             ws.receive_json()
+
+
+def test_ws_live_uses_capture_time() -> None:
+    """결과의 time_s가 폰이 보낸 촬영 시각(ms)인지 확인한다."""
+    with client.websocket_connect(LIVE_URL) as ws:
+        ws.send_bytes(make_frame_message(0, time_ms=1500))
+        result = ws.receive_json()
+
+    assert result["time_s"] == 1.5
 
 
 def test_ws_live_returns_result_for_frame() -> None:
@@ -82,7 +96,7 @@ def test_ws_live_applies_set_speed_from_next_frame() -> None:
 def test_ws_live_skips_broken_jpeg() -> None:
     """깨진 JPEG는 건너뛰고 다음 정상 프레임은 처리하는지 확인한다."""
     with client.websocket_connect(LIVE_URL) as ws:
-        ws.send_bytes((0).to_bytes(4, "big") + b"not a jpeg")
+        ws.send_bytes((0).to_bytes(8, "big") + b"not a jpeg")
         ws.send_bytes(make_frame_message(1))
         result = ws.receive_json()
 

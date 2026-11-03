@@ -7,10 +7,10 @@ export interface FrameResult {
   distance_m: number | null // 앞차까지 거리(m). 앞차가 없으면 null
   // 앞차 박스 [x1, y1, x2, y2] (px, FRAME_W_PX x FRAME_H_PX 기준). 앞차가 없으면 null
   lead_box_px: [number, number, number, number] | null
-  speed_kmh: number // 내 속도(km/h)
+  speed_kmh: number | null // 내 속도(km/h). 속도를 모르면 null
   rel_speed_mps: number // 앞차와 가까워지는 속도(m/s). 멀어지면 음수
   ttc_s: number | null // 충돌까지 남은 시간(초). 가까워지지 않으면 null
-  safe_distance_m: number // 안전거리(m)
+  safe_distance_m: number | null // 안전거리(m). 속도를 모르면 null
   level: Level // 경고 단계 (서버가 판정)
   event: EventType | null // 경고가 나온 이유. 단계가 safe이면 null
   time_s: number | null // 이 프레임의 영상 위치(초). 재생 모드에서만 값이 있다

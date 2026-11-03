@@ -1,12 +1,10 @@
+from app.config import load_config
 from app.main import (
-    MOCK_HARD_BRAKE_REL_MPS,
     MOCK_SPEED_KMH,
     app,
     mock_approach,
     mock_cut_in,
-    mock_event,
     mock_hard_brake,
-    mock_level,
     replay_frame,
 )
 from fastapi.testclient import TestClient
@@ -23,21 +21,6 @@ def test_health_returns_ok() -> None:
     # 검증: 상태 코드와 본문
     assert res.status_code == 200
     assert res.json() == {"ok": True}
-
-
-def test_mock_level_boundaries() -> None:
-    """TTC 3초·1.5초, 안전거리 경계값에서 단계가 정확히 바뀌는지 확인한다."""
-    safe = 50.0
-    assert mock_level(60.0, 10.0, safe, False) == "정상"
-    assert (
-        mock_level(50.0, 10.0, safe, False) == "정상"
-    )  # 안전거리와 정확히 같으면 부족하지 않다
-    assert mock_level(49.9, 10.0, safe, False) == "주의"
-    assert mock_level(60.0, 3.01, safe, False) == "정상"
-    assert mock_level(60.0, 3.0, safe, False) == "경고"  # TTC 정확히 3초 = 경고
-    assert mock_level(60.0, 1.51, safe, False) == "경고"
-    assert mock_level(60.0, 1.5, safe, False) == "위험"  # TTC 정확히 1.5초 = 위험
-    assert mock_level(60.0, None, safe, False) == "정상"  # 가까워지지 않으면 TTC 없음
 
 
 def box_width(frame: dict) -> float:
@@ -91,28 +74,12 @@ def test_ws_ignores_invalid_set_speed() -> None:
     assert all(f["speed_kmh"] == MOCK_SPEED_KMH for f in frames)
 
 
-def test_mock_level_cut_in_raises_one_level() -> None:
-    """끼어들기가 있으면 단계가 한 단계 오르고, 위험은 그대로인지 확인한다."""
-    safe = 50.0
-    assert mock_level(60.0, 10.0, safe, True) == "주의"  # safe -> caution
-    assert mock_level(49.9, 10.0, safe, True) == "경고"  # caution -> warning
-    assert mock_level(60.0, 3.0, safe, True) == "위험"  # warning -> danger
-    assert mock_level(60.0, 1.5, safe, True) == "위험"  # 위험은 그대로
-
-
-def test_mock_event_priority() -> None:
-    """경고 이유가 겹칠 때 끼어들기, 급정거, 안전거리 부족 순으로 고르는지 확인한다."""
-    assert mock_event("정상", True, 20.0) is None
-    assert mock_event("경고", True, 20.0) == "cut_in"
-    assert mock_event("위험", False, MOCK_HARD_BRAKE_REL_MPS) == "hard_brake"
-    assert mock_event("위험", False, MOCK_HARD_BRAKE_REL_MPS - 0.1) == "gap_short"
-
-
 def test_mock_situations_cover_each_event() -> None:
     """세 mock 상황이 끝나고, 끼어들기와 급정거 순간을 각각 포함하는지 확인한다."""
+    hard_brake_rel_mps = load_config()["judgment"]["hard_brake_rel_mps"]
     assert len(list(mock_approach())) > 0
     assert any(cut_in for _, _, cut_in in mock_cut_in())
-    assert any(rel >= MOCK_HARD_BRAKE_REL_MPS for _, rel, _ in mock_hard_brake())
+    assert any(rel >= hard_brake_rel_mps for _, rel, _ in mock_hard_brake())
 
 
 def make_record(**changes) -> dict:
@@ -125,31 +92,38 @@ def make_record(**changes) -> dict:
         "speed_kmh": 60.0,
         "distance_m": 30.0,
         "ttc_s": 3.0,
+        "rel_speed_mps": 10.0,
+        "safe_distance_m": 33.3,
         "level": "경고",
+        "event": "hard_brake",
     }
     return {**record, **changes}
 
 
-def test_replay_frame_derives_screen_fields() -> None:
-    """거리 ÷ TTC로 상대 속도, 속도 x 안전거리 초로 안전거리를 구하는지 확인한다."""
-    frame = replay_frame(make_record(), safe_gap_s=2.0)
+def test_replay_frame_uses_judged_values_as_is() -> None:
+    """저장된 B의 판단값(상대 속도·안전거리·이유)을 C가 다시 계산하지 않고 그대로 쓰는지 확인한다."""
+    frame = replay_frame(make_record())
 
-    assert frame.rel_speed_mps == 10.0  # 30m ÷ 3초
-    assert abs(frame.safe_distance_m - 33.3) < 0.1  # 60km/h = 16.67m/s x 2초
+    assert frame.rel_speed_mps == 10.0
+    assert frame.safe_distance_m == 33.3
     assert frame.lead_box_px == (100.0, 200.0, 300.0, 400.0)
-    assert frame.event == "hard_brake"  # 가까워지는 속도 10m/s 이상
+    assert frame.event == "hard_brake"
     assert frame.time_s == 0.0  # 영상 위치가 같이 나간다
 
 
-def test_replay_frame_without_lead() -> None:
-    """앞차가 없으면 거리·박스·TTC는 None, 상대 속도는 0인지 확인한다."""
-    record = make_record(lead=None, distance_m=None, ttc_s=None, level="정상")
-    frame = replay_frame(record, safe_gap_s=2.0)
+def test_replay_frame_without_lead_or_speed() -> None:
+    """앞차가 없으면 거리·박스·TTC가, 속도를 모르면 속도·안전거리가 None으로 나가는지 확인한다."""
+    record = make_record(
+        lead=None, distance_m=None, ttc_s=None, level="정상", event=None,
+        rel_speed_mps=0.0, speed_kmh=None, safe_distance_m=None,
+    )
+    frame = replay_frame(record)
 
     assert frame.distance_m is None
     assert frame.lead_box_px is None
     assert frame.ttc_s is None
-    assert frame.rel_speed_mps == 0.0
+    assert frame.speed_kmh is None
+    assert frame.safe_distance_m is None
     assert frame.event is None
 
 

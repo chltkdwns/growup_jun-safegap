@@ -79,11 +79,11 @@ class FrameResult(BaseModel):
     distance_m: float | None  # 앞차까지 거리(m). 앞차가 없으면 None
     # 앞차 박스 (x1, y1, x2, y2), 화면 픽셀. 앞차가 없으면 None
     lead_box_px: tuple[float, float, float, float] | None
-    speed_kmh: float  # 내 속도(km/h)
+    speed_kmh: float | None  # 내 속도(km/h). 속도를 모르면 None
     rel_speed_mps: float  # 앞차와 가까워지는 속도(m/s). 멀어지면 음수
     # 충돌까지 남은 시간(초). 가까워지지 않으면 None
     ttc_s: float | None
-    safe_distance_m: float  # 안전거리(m) = 내 속도 x 안전거리 초
+    safe_distance_m: float | None  # 안전거리(m) = 내 속도 x 안전거리 초. 속도를 모르면 None
     # 경고 단계. 판정은 서버(B)가 하고 화면은 색과 글자만 바꾼다
     level: Level
     # 경고가 나온 이유. 단계가 정상이면 None
