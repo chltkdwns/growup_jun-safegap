@@ -44,6 +44,7 @@ class CutInDetector:
               frame_w_px 프레임 너비 (px)
         출력: 끼어들기 여부
         주의: 직전 프레임에 차선 바깥에 있던 차만 본다. 이번 프레임에 안 보인 차의 기록은 지운다.
+              처음 나타난 차는 기록이 없어 move_m 이상 움직였는지 알 수 없으므로 끼어들기로 보지 않는다.
               화면 끝에서 잘린 박스와 폭이 작은 먼 박스는 옆 거리가 흔들려서 보지 않는다.
         """
         cut_in = False
@@ -64,9 +65,13 @@ class CutInDetector:
                 continue
 
             prev_m = history[-2]
-            # 직전엔 차선 바깥, 지금은 차선 안(같은 쪽)이면 경계를 넘어 들어온 것이다
+            # 직전엔 차선 바깥, 지금은 차선 안(같은 쪽)이고, 기록 처음 위치보다 move_m 이상
+            # 안쪽으로 이동했으면 경계를 넘어 들어온 것이다. 이동량 조건이 없으면 경계 위에
+            # 가만히 있는 차가 박스 흔들림 때문에 안팎으로 오갈 때마다 끼어들기로 잡힌다
             crossed = (
-                abs(prev_m) > self.lane_half_width_m >= abs(offset_m) and prev_m * offset_m > 0
+                abs(prev_m) > self.lane_half_width_m >= abs(offset_m)
+                and prev_m * offset_m > 0
+                and abs(history[0]) - abs(offset_m) >= self.move_m
             )
             # N프레임 전엔 차선 바로 바깥(zone_m 이내)이었고, 같은 쪽에서 move_m 이상 다가왔으며
             # 마지막 프레임도 계속 다가오는 중이면 끼어드는 중이다

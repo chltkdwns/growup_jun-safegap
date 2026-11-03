@@ -5,7 +5,7 @@ import cv2
 from app.perception.cut_in import CutInDetector
 from app.perception.debug import draw_debug
 from app.perception.detect import crop_hood, load_detector, track_vehicles
-from app.perception.lead import select_lead
+from app.perception.lead import LeadSelector
 from app.schemas import LeadCar, PerceptionFrame
 
 
@@ -14,20 +14,19 @@ def perceive_frame(
     frame_idx: int,
     fps: float,
     center_x_px: float,
+    lead_selector: LeadSelector,
     cut_in_detector: CutInDetector,
     frame_w_px: int,
-    car_width_m: float,
-    lane_half_width_m: float,
 ) -> PerceptionFrame:
     """한 프레임의 트래킹 결과로 앞차와 끼어들기를 정해 A → B 형식으로 만든다.
 
     사용처: analyze_video()가 매 프레임 호출한다. YOLO 없이 가짜 tracks로 테스트할 수 있다.
     입력: tracks {ID: [x1, y1, x2, y2] (px)}, frame_idx 프레임 번호, fps 초당 프레임 수,
-          center_x_px 정면 x (px), cut_in_detector 영상 단위로 만든 판단기,
-          frame_w_px 프레임 너비 (px), car_width_m 가정 차폭 (m), lane_half_width_m 차선 반폭 (m)
+          center_x_px 정면 x (px), lead_selector·cut_in_detector 영상 단위로 만든 판단기,
+          frame_w_px 프레임 너비 (px)
     출력: PerceptionFrame
     """
-    lead_id = select_lead(tracks, center_x_px, car_width_m, lane_half_width_m)
+    lead_id = lead_selector.select(tracks, center_x_px)
     lead = LeadCar(id=lead_id, box=tracks[lead_id]) if lead_id is not None else None
     cut_in = cut_in_detector.update(tracks, center_x_px, frame_w_px)
     return PerceptionFrame(frame=frame_idx, time=frame_idx / fps, lead=lead, cut_in=cut_in)
@@ -59,6 +58,11 @@ def analyze_video(
     center_x_px = perception_cfg["center_x_ratio"] * frame_w_px
     car_width_m = perception_cfg["car_width_m"]
     lane_half_width_m = perception_cfg["lane_half_width_m"]
+    lead_selector = LeadSelector(
+        car_width_m,
+        perception_cfg["lead_half_width_m"],
+        perception_cfg["lead_switch_area_ratio"],
+    )
     cut_in_detector = CutInDetector(
         perception_cfg["cut_in_frames"],
         car_width_m,
@@ -94,10 +98,9 @@ def analyze_video(
             frame_idx,
             fps,
             center_x_px,
+            lead_selector,
             cut_in_detector,
             frame_w_px,
-            car_width_m,
-            lane_half_width_m,
         )
         results.append(result)
 

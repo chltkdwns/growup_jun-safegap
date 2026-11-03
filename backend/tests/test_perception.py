@@ -5,13 +5,15 @@
 
 from app.perception.cut_in import CutInDetector
 from app.perception.lateral import lateral_offset_m
-from app.perception.lead import select_lead
+from app.perception.lead import LeadSelector
 from app.perception.pipeline import perceive_frame
 
 FRAME_W_PX = 1000
 CENTER_X_PX = 500  # 정면은 화면 중앙
 CAR_W_M = 1.8
-LANE_HALF_M = 1.7
+LANE_HALF_M = 1.7  # 끼어들기 경계용 차선 반폭
+LEAD_HALF_M = 1.2  # 앞차 후보로 보는 정면 기준 반폭 (차 중심이 이 안이어야 한다)
+SWITCH_RATIO = 1.3  # 새 후보가 현재 앞차보다 넓이가 이 배 이상 커야 앞차를 바꾼다
 ZONE_M = 2.0
 MOVE_M = 0.3
 MIN_BOX_W_PX = 40
@@ -39,28 +41,80 @@ def test_lateral_offset_uses_box_width_as_scale():
     assert lateral_offset_m(box_at(400, 200), CENTER_X_PX, CAR_W_M) == -0.9
 
 
+def make_selector() -> LeadSelector:
+    """정면 1.2m 안에서 가장 큰 차를 고르고, 1.3배 이상 커져야 앞차를 바꾸는 테스트용 선택기."""
+    return LeadSelector(CAR_W_M, LEAD_HALF_M, SWITCH_RATIO)
+
+
 def test_lead_is_largest_box_inside():
     tracks = {
         1: box_at(500, 80),  # 안, 멀리
         2: box_at(520, 200),  # 안, 가까이 → 앞차
         3: box_at(100, 300),  # 바깥(-2.4m), 제일 큼
     }
-    assert select_lead(tracks, CENTER_X_PX, CAR_W_M, LANE_HALF_M) == 2
+    assert make_selector().select(tracks, CENTER_X_PX) == 2
 
 
 def test_no_lead_when_all_outside():
-    assert select_lead({1: box_at(100)}, CENTER_X_PX, CAR_W_M, LANE_HALF_M) is None
+    assert make_selector().select({1: box_at(100)}, CENTER_X_PX) is None
 
 
 def test_lead_boundary_is_inclusive():
-    # 폭 100px에서 1.7m는 94.44px. 94px(1.692m)는 안, 95px(1.71m)는 밖
-    assert select_lead({1: box_at(594)}, CENTER_X_PX, CAR_W_M, LANE_HALF_M) == 1
-    assert select_lead({1: box_at(595)}, CENTER_X_PX, CAR_W_M, LANE_HALF_M) is None
+    # 폭 100px에서 1.2m는 66.67px. 66px(1.188m)는 안, 67px(1.206m)는 밖
+    assert make_selector().select({1: box_at(566)}, CENTER_X_PX) == 1
+    assert make_selector().select({1: box_at(567)}, CENTER_X_PX) is None
+
+
+def test_adjacent_lane_car_on_lane_line_is_not_lead():
+    # 정면 트럭(0m, 넓이 22500)과 옆 차선 차(+1.7m, 넓이 25600, 더 큼): 옆 차선 차는 후보가 아니다
+    tracks = {1: box_at(500, 150), 2: box_at(500 + 1.7 * 160 / 1.8, 160)}
+    assert make_selector().select(tracks, CENTER_X_PX) == 1
+
+
+def test_lead_is_kept_when_other_is_only_slightly_bigger():
+    selector = make_selector()
+    assert selector.select({1: box_at(500, 100), 2: box_at(520, 80)}, CENTER_X_PX) == 1
+    # 2번이 1.2배(넓이)로 커져도 1.3배 미만이라 앞차는 1번 그대로
+    assert selector.select({1: box_at(500, 100), 2: box_at(520, 109)}, CENTER_X_PX) == 1
+
+
+def test_lead_switches_when_other_is_much_bigger():
+    selector = make_selector()
+    assert selector.select({1: box_at(500, 100), 2: box_at(520, 80)}, CENTER_X_PX) == 1
+    # 2번 넓이가 1번의 1.44배(폭 120 vs 100)면 앞차를 바꾼다
+    assert selector.select({1: box_at(500, 100), 2: box_at(520, 120)}, CENTER_X_PX) == 2
+
+
+def test_lead_switches_when_current_lead_disappears():
+    selector = make_selector()
+    assert selector.select({1: box_at(500, 200), 2: box_at(520, 80)}, CENTER_X_PX) == 1
+    # 1번이 사라지면 비율과 상관없이 남은 후보 중 가장 큰 차로 바뀐다
+    assert selector.select({2: box_at(520, 80)}, CENTER_X_PX) == 2
+
+
+def test_lead_keeps_none_state_after_no_candidates():
+    selector = make_selector()
+    assert selector.select({1: box_at(500, 100)}, CENTER_X_PX) == 1
+    assert selector.select({}, CENTER_X_PX) is None
+    # 한 번 사라졌다 돌아온 차는 새로 고르는 것과 같다
+    assert selector.select({1: box_at(500, 100), 2: box_at(520, 150)}, CENTER_X_PX) == 2
 
 
 def test_cut_in_when_crossing_boundary():
     # 3.6m(바깥) → 1.62m(안): 같은 쪽에서 경계를 넘어 들어옴
     assert run(make_detector(5), [box_at(700), box_at(590)]) == [False, True]
+
+
+def test_no_cut_in_for_car_flickering_on_boundary():
+    # 경계(1.7m) 바로 위에서 1.76m ↔ 1.64m로 흔들리는 차는 실제로 안 움직였으니 끼어들기가 아니다
+    flicker = [box_at(x) for x in (598, 591, 598, 591, 598, 591)]
+    assert run(make_detector(5), flicker) == [False] * 6
+
+
+def test_cut_in_when_slowly_crossing_boundary_for_real():
+    # 2.1 → 2.0 → 1.9 → 1.8 → 1.69m: 4프레임 동안 0.4m 이상 안쪽으로 이동해 경계를 넘었다
+    xs = (616.7, 611.1, 605.6, 600, 594)
+    assert run(make_detector(5), [box_at(x) for x in xs]) == [False, False, False, False, True]
 
 
 def test_no_cut_in_when_jumping_to_other_side():
@@ -112,16 +166,14 @@ def test_no_cut_in_for_car_already_inside_or_moving_away():
 
 
 def test_perceive_frame_matches_interface():
-    detector = make_detector(5)
     result = perceive_frame(
         {3: box_at(500)},
         frame_idx=120,
         fps=30.0,
         center_x_px=CENTER_X_PX,
-        cut_in_detector=detector,
+        lead_selector=make_selector(),
+        cut_in_detector=make_detector(5),
         frame_w_px=FRAME_W_PX,
-        car_width_m=CAR_W_M,
-        lane_half_width_m=LANE_HALF_M,
     )
     assert result.model_dump() == {
         "frame": 120,
