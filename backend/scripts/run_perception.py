@@ -59,7 +59,7 @@ def main() -> None:
     prefix = next_run_prefix(output_dir, Path(args.video).stem)
     results = analyze_video(
         args.video,
-        cfg["paths"]["yolo_weights"],
+        cfg["perception"]["model"],
         cfg["perception"],
         debug_video_path=str(output_dir / f"{prefix}_debug.mp4"),
     )

@@ -1,20 +1,57 @@
-# 브레이크타임 설정값. 값마다 단위를 주석으로 함께 적는다.
-# 임계값은 개발용 영상으로만 조정한다 (평가용 영상을 보고 바꾸지 않는다).
+# 브레이크타임 설정 파일
+# 원칙: 카메라·영상마다 바뀌거나, 실험으로 조정하는 값만 여기에 둔다.
+#       바뀌지 않는 값(COCO 클래스 번호, km/h 변환 등)은 코드 상단 상수로 둔다.
+# 튜닝은 개발용 영상으로만 한다. 평가용 영상을 보고 값을 바꾸지 않는다.
 
 paths:
-  yolo_weights: yolov8n.pt  # 사전학습 YOLO 가중치. 파일 이름만 쓰면 처음 실행 때 자동으로 받음 (커밋 금지)
-  output_dir: outputs                     # 결과 JSON·디버그 영상 저장 폴더 (커밋 금지)
+  video_dir: data/videos        # 원본 영상 폴더 (커밋 금지)
+  output_dir: outputs           # 결과 영상·JSON 폴더 (커밋 금지)
+  upload_dir: data/uploads      # API로 업로드된 영상 저장 폴더 (커밋 금지)
 
+camera:
+  hfov_deg: null                # 수평 화각(도). 블랙박스 스펙표나 AI Hub 보정값으로 채운다
+  focal_px: null                # 초점거리(px). 알면 직접 입력, null이면 hfov_deg로 계산
+  bonnet_ratio: 0.8             # 화면 위쪽에서 사용할 비율 (아래 20%는 본넷이라 잘라냄)
+
+# ---------- A. 인식 ----------
 perception:
-  conf_threshold: 0.3      # YOLO 검출 신뢰도 최소값 (0~1)
-  tracker: bytetrack.yaml  # Ultralytics에 들어 있는 ByteTrack 설정 파일 이름
-  nms_iou: 0.5            # 겹친 박스 중복 제거 기준 (0~1). 낮을수록 많이 지운다 (Ultralytics 기본 0.7)
+  model: yolov8n.pt             # 사전학습 YOLO 모델 파일. A의 모든 실험과 임계값은 yolov8n 기준 (yolo11n은 아직 검증 안 함)
+  conf_threshold: 0.3           # 이 확신도(0~1) 미만의 박스는 버림 (초기값, 개발용 영상으로 조정)
+  tracker: bytetrack.yaml       # Ultralytics 내장 트래커 설정
+  nms_iou: 0.5                  # 겹친 박스 중복 제거 기준 (0~1). 낮을수록 많이 지운다 (Ultralytics 기본 0.7)
   # 카메라마다 다른 값. 기본값은 평균적인 값이고, 카메라별 설정 파일(configs/*.yaml, --camera)로 덮어쓴다
-  hood_ratio: 0.2             # 화면 아래 본넷이 차지하는 높이 비율 (0~1). 이 아래는 검출에서 잘라낸다
-  center_x_ratio: 0.5         # 내 차가 향하는 정면의 x / 화면 너비 (0~1). 0.5는 화면 중앙
-  car_width_m: 1.8            # 앞차 실제 폭 가정 (m). 옆 거리 계산에 쓴다
-  lane_half_width_m: 1.7      # 내 차선 반폭 (m). 정면에서 옆으로 이 안에 있는 차가 앞차 후보
-  cut_in_frames: 5            # 끼어들기 판단 연속 프레임 수 N (프레임)
-  cut_in_zone_m: 2.0          # 차선 바깥 이 거리(m) 안에 있는 차만 끼어들기 후보
-  cut_in_move_m: 0.3          # N프레임 동안 차선 안쪽으로 이만큼(m) 이상 다가와야 끼어들기
-  cut_in_min_box_w_px: 40     # 박스 폭이 이보다 작은 먼 차는 끼어들기 판단에서 뺀다 (px). 폭이 작으면 옆 거리가 크게 흔들린다
+  hood_ratio: 0.2               # 화면 아래 본넷이 차지하는 높이 비율 (0~1). 이 아래는 검출에서 잘라낸다
+  center_x_ratio: 0.5           # 내 차가 향하는 정면의 x / 화면 너비 (0~1). 0.5는 화면 중앙
+  car_width_m: 1.8              # 앞차 실제 폭 가정 (m). 옆 거리 계산에 쓴다 (A 전용, B는 judgment.car_width_m)
+  lane_half_width_m: 1.7        # 내 차선 반폭 (m). 정면에서 옆으로 이 안에 있는 차가 앞차 후보
+  cut_in_frames: 5              # 끼어들기 판단 연속 프레임 수 N (프레임)
+  cut_in_zone_m: 2.0            # 차선 바깥 이 거리(m) 안에 있는 차만 끼어들기 후보
+  cut_in_move_m: 0.3            # N프레임 동안 차선 안쪽으로 이만큼(m) 이상 다가와야 끼어들기
+  cut_in_min_box_w_px: 40       # 박스 폭이 이보다 작은 먼 차는 끼어들기 판단에서 뺀다 (px). 폭이 작으면 옆 거리가 크게 흔들린다
+
+# ---------- B. 판단 ----------
+judgment:
+  car_width_m: 1.8              # 핀홀 거리 계산에 쓰는 승용차 평균 폭(m)
+  ttc_window_s: 0.7         # TTC 직선 맞추기에 쓸 최근 프레임 수
+  max_ttc_s: 10                 # 이보다 큰 TTC는 위험 없음으로 봄(초)
+  safe_gap_s: 2.0               # 안전거리 = 내 속도 × 이 시간(초)
+  ttc_warning_s: 3.0            # TTC 이하면 "경고"
+  ttc_danger_s: 1.5             # TTC 이하면 "위험"
+  level_hold_frames: 5          # 경고 단계가 몇 프레임 유지돼야 화면에 반영할지 (깜빡임 방지)
+  same_car_iou: 0.5
+  max_missing_s: 0.2            # 앞차를 이 시간(초) 이내로 놓치면 직전 결과를 유지 (검출 끊김 대비)
+
+# ---------- C. 통합·서비스 ----------
+api:
+  max_upload_mb: 500            # 업로드 영상 최대 크기(MB)
+  cors_origins:                 # React 개발 서버 주소 (브라우저 접근 허용 목록)
+    - http://localhost:5173
+
+
+# ---------- KITTI tracking (B 검증용) ----------
+kitti:
+  root: data/kitti/training     # image_02, label_02, calib, oxts가 있는 폴더 (backend 기준)
+  fps: 10                       # KITTI 카메라 프레임 속도
+  lane_half_width_m: 1.8        # 정답 3D 위치로 앞차를 고를 때, 내 차선으로 볼 좌우 폭의 절반(m)
+
+  

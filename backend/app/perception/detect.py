@@ -11,7 +11,7 @@ def load_detector(weights_path: str) -> YOLO:
     """사전학습 YOLO 모델을 불러온다.
 
     사용처: pipeline.analyze_video()가 영상 하나에 한 번 호출한다.
-    입력: weights_path 가중치 파일 경로 (config의 paths.yolo_weights)
+    입력: weights_path 가중치 파일 경로 (config의 perception.model)
     출력: YOLO 모델
     주의: 트래커 상태가 모델 안에 남으므로 영상마다 새로 불러온다.
     """
