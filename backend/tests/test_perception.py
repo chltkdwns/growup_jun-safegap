@@ -169,7 +169,7 @@ def test_perceive_frame_matches_interface():
     result = perceive_frame(
         {3: box_at(500)},
         frame_idx=120,
-        fps=30.0,
+        time_s=4.0,
         center_x_px=CENTER_X_PX,
         lead_selector=make_selector(),
         cut_in_detector=make_detector(5),

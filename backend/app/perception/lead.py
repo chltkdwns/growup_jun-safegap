@@ -23,7 +23,7 @@ class LeadSelector:
     def __init__(
         self, car_width_m: float, lead_half_width_m: float, switch_area_ratio: float
     ) -> None:
-        """사용처: pipeline.analyze_video()가 영상 하나에 한 번 만든다.
+        """사용처: pipeline.PerceptionStream이 만들어질 때 한 번 만든다.
 
         입력: car_width_m 가정 차폭 (m, config의 car_width_m),
               lead_half_width_m 앞차 후보로 볼 정면 기준 반폭 (m, config의 lead_half_width_m),

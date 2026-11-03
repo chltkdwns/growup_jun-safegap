@@ -18,7 +18,7 @@ class CutInDetector:
         move_m: float,
         min_box_w_px: float,
     ) -> None:
-        """사용처: pipeline.analyze_video()가 영상 하나에 한 번 만든다.
+        """사용처: pipeline.PerceptionStream이 만들어질 때 한 번 만든다.
 
         입력: approach_frames 끼어들기로 볼 연속 프레임 수 N (config의 cut_in_frames),
               car_width_m 가정 차폭 (m), lane_half_width_m 내 차선 반폭 (m),
