@@ -1,0 +1,3 @@
+camera:
+  hfov_deg: 69        # 갤럭시 S25/S26 기본 카메라 (24mm, 추정 66~72°의 중간값)
+  focal_px: null      # null이면 받은 프레임 폭으로 계산 (1920px → 약 1400px)

@@ -11,27 +11,25 @@ class LevelStabilizer:
     주의: 앞차 ID가 바뀌면 reset()을 호출한다.
     """
 
-    def __init__(self, hold_frames: int):
-        self.hold_frames = hold_frames  # 내려가기 전에 기다릴 프레임 수 (config에서 받음)
+    def __init__(self, hold_s: float):
+        self.hold_s = hold_s  # 내려가기 전에 기다릴 시간(초) (config에서 받음)
         self.reset()
 
     def reset(self) -> None:
-        self.shown = LEVELS[0]   # 지금 화면에 보이는 단계
-        self.pending = None      # 내려가려고 기다리는 단계
-        self.count = 0           # pending이 연속으로 나온 횟수
+        self.shown = LEVELS[0]     # 지금 화면에 보이는 단계
+        self.pending = None        # 내려가려고 기다리는 단계
+        self.pending_since = None  # pending이 처음 나온 시각(초)
 
-    def update(self, raw_level: str) -> str:
+    def update(self, raw_level: str, time_s: float) -> str:
         raw_i, shown_i = LEVELS.index(raw_level), LEVELS.index(self.shown)
         # 1) 더 위험해지면 즉시 반영 (경고가 늦으면 안 되니까)
         if raw_i >= shown_i:
-            self.shown, self.pending, self.count = raw_level, None, 0
+            self.shown, self.pending, self.pending_since = raw_level, None, None
             return self.shown
-        # 2) 덜 위험해지면, 같은 단계가 연속으로 나오는지 센다
-        if raw_level == self.pending:
-            self.count += 1
-        else:
-            self.pending, self.count = raw_level, 1
-        # 3) hold_frames 연속이면 그때 내림
-        if self.count >= self.hold_frames:
-            self.shown, self.pending, self.count = raw_level, None, 0
+        # 2) 덜 위험해지면, 그 단계가 언제부터 이어졌는지 기록
+        if raw_level != self.pending:
+            self.pending, self.pending_since = raw_level, time_s
+        # 3) hold_s초 이상 이어졌으면 그때 내림
+        if time_s - self.pending_since >= self.hold_s:
+            self.shown, self.pending, self.pending_since = raw_level, None, None
         return self.shown
