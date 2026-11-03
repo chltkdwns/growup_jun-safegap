@@ -1,0 +1,63 @@
+/* 색은 모두 변수로 둔다. <html data-theme="light|dark">가 어느 쪽 값을 쓸지 정한다 (useTheme이 설정) */
+:root {
+  --bg: #f4f6f9;
+  --panel: #ffffff;
+  --text: #1b2430;
+  --muted: #5b6878; /* 이름·단위 같은 보조 글자 */
+  --faint: #8896a6; /* 더 약한 보조 글자 */
+  --line: #d9e0e8;
+  --accent: #1d6fd6;
+  --ok: #3cc983; /* 연결됨 표시 */
+  --bad: #ff4b55; /* 연결 안 됨 표시 */
+
+  font: 16px/1.5 system-ui, 'Segoe UI', 'Malgun Gothic', Roboto, sans-serif;
+  color-scheme: light;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme='dark'] {
+  --bg: #090c11;
+  --panel: #10151d;
+  --text: #e4eaf1;
+  --muted: #8593a4;
+  --faint: #5a6778;
+  --line: #202a37;
+  --accent: #8cc8ff;
+
+  color-scheme: dark; /* 슬라이더·버튼 같은 기본 부품도 어둡게 */
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+p {
+  margin: 0;
+}
+
+#root {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+/* 버튼 공통 모양. 켜진 상태(aria-pressed=true)는 강조색 테두리로 보여 준다 */
+button {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}

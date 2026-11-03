@@ -1,0 +1,26 @@
+/* 16:9 영상 틀. position: relative라서 안쪽 오버레이(absolute)가 이 틀 크기를 기준으로 한다 */
+.video-player {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: #05070a;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* contain: 영상 비율을 유지한 채 틀 안에 맞춘다 (잘리지 않게) */
+.video-player video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* 영상이 없을 때 가운데에 보이는 자리 표시 글자 */
+.video-empty {
+  color: #5a6778;
+  font-size: 14px;
+}
