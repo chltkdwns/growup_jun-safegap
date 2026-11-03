@@ -39,11 +39,11 @@ export const EVENTS: Record<EventType, string> = {
 // 서버 config.yaml의 api.live_fps와 같게 둔다 (B의 TTC 창이 이 값으로 계산된다)
 export const LIVE_FPS = 15
 // 서버로 보낼 프레임의 "긴 변"(px). 폰을 가로로 들든 세로로 들든 긴 변을 이 길이로 줄여 보내서, 서버가 구한 초점거리가 항상 같다.
-// 클수록 정확하지만 업로드가 커진다 (640px, 품질 0.6에서 약 43KB/장 = 5Mbps). 초점거리는 서버가 정한다(config api.live_hfov_deg)
-export const LIVE_SEND_LONG_PX = 640
+// 클수록 정확하지만 업로드가 커진다 (960px, 품질 0.6에서 약 10Mbps. 640px은 약 5Mbps). 인식기 imgsz가 960이라 이보다 크게 보내도 검출에는 이득이 없다. 초점거리는 서버가 정한다(폰 설정 파일의 hfov_deg)
+export const LIVE_SEND_LONG_PX = 960
 export const LIVE_JPEG_QUALITY = 0.6
 // 서버로 가는 중인 데이터가 이 크기(바이트)를 넘으면 새 프레임을 보내지 않는다 (네트워크가 느릴 때 지연이 쌓이지 않게)
-export const LIVE_MAX_BUFFERED_BYTES = 200_000
+export const LIVE_MAX_BUFFERED_BYTES = 400_000 // 960px 한 장이 약 100KB라 4장 분량 (640px일 때 200_000과 같은 비율)
 
 // 서버가 알려 준 영상 위치와 실제 영상 재생 위치가 이만큼(초) 넘게 벌어지면 영상 위치를 서버에 맞춘다.
 // 너무 작으면 되감기가 잦아 끊겨 보이고, 너무 크면 박스가 영상보다 앞서거나 뒤처져 보인다.
