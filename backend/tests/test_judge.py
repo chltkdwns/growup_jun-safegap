@@ -7,12 +7,8 @@ F_PX = 1000   # make_fake_input.py와 같은 가짜 초점거리
 
 def make_judge():
     cfg = load_config()   # 실제 backend/config.yaml 값을 그대로 사용
-    return FrameJudge(cfg["judgment"], fps=FPS, focal_px=F_PX)
+    return FrameJudge(cfg["judgment"], focal_px=F_PX)
 
-
-def test_output_has_interface_keys():
-    out = make_judge().judge_frame(load("approach")[0], speed_kmh=100)
-    assert set(out) == {"frame", "speed_kmh", "distance_m", "ttc_s", "level"}
 
 
 def test_approach_reaches_warning_then_danger():
@@ -62,10 +58,39 @@ def test_short_miss_keeps_last_result():
 
 def test_long_miss_resets():
     """max_missing_s보다 오래 놓침 → 앞차 없음(정상)으로 처리"""
+    cfg = load_config()["judgment"]
     judge = make_judge()
     rows = load("approach")
     for row in rows[:40]:
         judge.judge_frame(row, speed_kmh=None)
-    n = round(load_config()["judgment"]["max_missing_s"] * FPS)
-    outs = [judge.judge_frame(dict(rows[40 + i], lead=None), speed_kmh=None) for i in range(n + 1)]
-    assert outs[-1]["distance_m"] is None and outs[-1]["level"] == "정상"
+    outs = [judge.judge_frame(dict(r, lead=None), speed_kmh=None) for r in rows[40:60]]
+    for r, out in zip(rows[40:60], outs):
+        if r["time"] - rows[39]["time"] > cfg["max_missing_s"]:   # 마지막으로 본 뒤 지난 시간
+            assert out["distance_m"] is None and out["level"] == "정상"
+
+def test_output_has_screen_values():
+    """B 출력에 화면용 값(rel_speed_mps, safe_distance_m, event)이 들어 있음"""
+    judge = make_judge()
+    outs = [judge.judge_frame(r, speed_kmh=100) for r in load("approach")]
+    assert set(outs[0]) == {"frame", "speed_kmh", "distance_m", "ttc_s", "level",
+                            "rel_speed_mps", "safe_distance_m", "event"}
+    assert abs(outs[60]["rel_speed_mps"] - 10.0) < 0.2       # 가짜 입력은 10m/s로 접근
+    assert abs(outs[60]["safe_distance_m"] - 55.6) < 0.1     # 100km/h × 2초
+    assert outs[60]["event"] == "hard_brake"                  # 10m/s 이상이라 급정거
+
+
+def test_speed_change_applies_next_frame():
+    """B-5: 같은 거리에서 50 → 100km/h로 바뀌면 그 프레임부터 안전거리 부족(주의)"""
+    judge = make_judge()
+    rows = load("keep")                                       # 40m 유지, TTC 없음
+    assert judge.judge_frame(rows[0], speed_kmh=50)["level"] == "정상"   # 안전거리 27.8m < 40m
+    assert judge.judge_frame(rows[1], speed_kmh=100)["level"] == "주의"  # 안전거리 55.6m > 40m
+
+
+def test_unknown_speed():
+    """속도를 모르면(None) 안전거리 기준은 건너뛰고 TTC로만 판단, safe_distance_m은 None"""
+    judge = make_judge()
+    outs = [judge.judge_frame(r, speed_kmh=None) for r in load("approach")]
+    assert outs[30]["safe_distance_m"] is None
+    assert outs[30]["level"] == "정상"     # t=1초, TTC 4초: 속도를 몰라 '주의'도 안 뜸
+    assert outs[70]["level"] == "경고"     # t≈2.3초, TTC 2.7초: TTC 기준은 그대로 동작

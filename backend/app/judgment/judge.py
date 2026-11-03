@@ -2,7 +2,7 @@ from app.judgment.box_utils import box_iou
 from app.judgment.distance import estimate_distance_m
 from app.judgment.level_stabilizer import LevelStabilizer
 from app.judgment.ttc import TTCEstimator
-from app.judgment.warning_level import decide_level
+from app.judgment.warning_level import decide_event, decide_level, safe_distance_m
 
 
 class FrameJudge:
@@ -14,16 +14,14 @@ class FrameJudge:
     주의: 앞차가 바뀌거나 사라지면 TTC와 깜빡임 방지 상태를 초기화한다.
     """
 
-    def __init__(self, cfg_judgment: dict, fps: float, focal_px: float):
+    def __init__(self, cfg_judgment: dict, focal_px: float):
         self.cfg = cfg_judgment
         self.focal_px = focal_px
-        window_frames = max(3, round(cfg_judgment["ttc_window_s"] * fps))  # 초 → 프레임 수
-        self.ttc = TTCEstimator(fps, window_frames, cfg_judgment["max_ttc_s"])
-        self.stabilizer = LevelStabilizer(cfg_judgment["level_hold_frames"])
+        self.ttc = TTCEstimator(cfg_judgment["ttc_window_s"], cfg_judgment["max_ttc_s"])
+        self.stabilizer = LevelStabilizer(cfg_judgment["level_hold_s"])
         self.lead_id = None   # 지금 따라가고 있는 앞차 ID
         self.lead_box = None  # 직전 프레임의 앞차 박스 (id가 바뀌어도 같은 차인지 확인용)
-        self.max_missing_frames = round(cfg_judgment["max_missing_s"] * fps)  # 앞차를 놓쳐도 버틸 프레임 수
-        self.missing_frames = 0  # 지금까지 연속으로 앞차를 놓친 프레임 수
+        self.last_seen_s = None  # 마지막으로 앞차를 본 촬영 시각(초)
         self.last_out = None     # 마지막으로 앞차가 있었던 프레임의 결과
 
     def _is_same_car(self, new_id: int | None, new_box: list | None) -> bool:
@@ -39,20 +37,28 @@ class FrameJudge:
             return False
         return box_iou(new_box, self.lead_box) >= self.cfg["same_car_iou"]
 
+    def _safe_distance(self, speed_kmh: float | None) -> float | None:
+        """내 속도로 안전거리(m)를 구한다. 속도를 모르면 None."""
+        if speed_kmh is None:
+            return None
+        return round(safe_distance_m(speed_kmh, self.cfg["safe_gap_s"]), 1)
+
+
     def judge_frame(self, perception: dict, speed_kmh: float | None) -> dict:
         """한 프레임의 A→B 결과(perception)를 B→C 형식으로 바꾼다.
 
         입력: perception {"frame", "time", "lead": {"id", "box"} 또는 None, "cut_in"},
               speed_kmh 내 속도(km/h, 모르면 None)
-        출력: {"frame", "speed_kmh", "distance_m", "ttc_s", "level"}
+        출력: {"frame", "speed_kmh", "distance_m", "ttc_s", "level", "rel_speed_mps", "safe_distance_m", "event"}
         """
         lead = perception["lead"]
         
         # 0) 앞차를 잠깐(max_missing_s 이내) 놓치면 직전 결과를 유지 (검출이 1~2프레임 끊기는 경우)
-        if lead is None and self.last_out is not None and self.missing_frames < self.max_missing_frames:
-            self.missing_frames += 1
-            return dict(self.last_out, frame=perception["frame"], speed_kmh=speed_kmh)
-        self.missing_frames = 0
+        time_s = perception["time"]
+        if (lead is None and self.last_out is not None
+                and time_s - self.last_seen_s <= self.cfg["max_missing_s"]):
+            return dict(self.last_out, frame=perception["frame"], speed_kmh=speed_kmh,
+                        safe_distance_m=self._safe_distance(speed_kmh))
         
         # 1) 앞차가 바뀌거나 사라지면 이전 차의 기록을 버림
         new_id = lead["id"] if lead else None
@@ -68,14 +74,20 @@ class FrameJudge:
             x1, _, x2, _ = lead["box"]
             box_w_px = x2 - x1
             distance_m = estimate_distance_m(box_w_px, self.focal_px, self.cfg["car_width_m"])
-            ttc_s = self.ttc.update(box_w_px)
+            ttc_s = self.ttc.update(box_w_px, time_s)  # 실제 촬영 시각 사용
+            self.last_seen_s = time_s
 
         # 3) 경고 단계를 정하고 깜빡임을 막음
         raw_level = decide_level(
             distance_m, speed_kmh, ttc_s, perception["cut_in"],
             self.cfg["safe_gap_s"], self.cfg["ttc_warning_s"], self.cfg["ttc_danger_s"],
         )
-        level = self.stabilizer.update(raw_level)
+        level = self.stabilizer.update(raw_level, time_s)
+
+        # 4) 화면에 보여줄 나머지 값: 가까워지는 속도, 안전거리, 경고 이유
+        rel_speed_mps = distance_m / ttc_s if distance_m is not None and ttc_s else 0.0  # TTC = 거리 ÷ 속도를 거꾸로
+        event = decide_event(level, perception["cut_in"], rel_speed_mps, self.cfg["hard_brake_rel_mps"])
+
 
         out = {
             "frame": perception["frame"],
@@ -83,6 +95,9 @@ class FrameJudge:
             "distance_m": None if distance_m is None else round(distance_m, 1),
             "ttc_s": None if ttc_s is None else round(float(ttc_s), 2),
             "level": level,
+            "rel_speed_mps": round(rel_speed_mps, 2),
+            "safe_distance_m": self._safe_distance(speed_kmh),
+            "event": event,
         }
         self.last_out = out if lead else None  # 앞차가 있을 때만 "유지할 결과"로 기억
         return out

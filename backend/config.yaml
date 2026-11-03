@@ -39,9 +39,10 @@ judgment:
   safe_gap_s: 2.0               # 안전거리 = 내 속도 × 이 시간(초)
   ttc_warning_s: 3.0            # TTC 이하면 "경고"
   ttc_danger_s: 1.5             # TTC 이하면 "위험"
-  level_hold_frames: 5          # 경고 단계가 몇 프레임 유지돼야 화면에 반영할지 (깜빡임 방지)
   same_car_iou: 0.5
   max_missing_s: 0.2            # 앞차를 이 시간(초) 이내로 놓치면 직전 결과를 유지 (검출 끊김 대비)
+  level_hold_s: 0.15            # 낮은 단계가 이 시간(초) 이상 이어져야 화면 단계를 내림 (기존 level_hold_frames: 5 대체)
+  hard_brake_rel_mps: 10.0      # 가까워지는 속도가 이 값(m/s) 이상이면 경고 이유를 "급정거"로 봄
 
 # ---------- C. 통합·서비스 ----------
 api:

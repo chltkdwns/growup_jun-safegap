@@ -29,7 +29,7 @@ def judge_sequence(root: Path, seq: str, cfg: dict) -> tuple[list[dict], list[fl
         root / "label_02" / f"{seq}.txt", len(speeds),
         cfg["kitti"]["lane_half_width_m"], cfg["kitti"]["fps"],
     )
-    judge = FrameJudge(cfg["judgment"], fps=cfg["kitti"]["fps"], focal_px=read_focal_px(root / "calib" / f"{seq}.txt"))
+    judge = FrameJudge(cfg["judgment"], focal_px=read_focal_px(root / "calib" / f"{seq}.txt"))
     results = [judge.judge_frame(row, speeds[i]) for i, row in enumerate(rows)]
     return results, truth
 

@@ -47,3 +47,22 @@ def decide_level(
     if cut_in:
         level = min(level + 1, len(LEVELS) - 1)
     return LEVELS[level]
+
+
+def decide_event(level: str, cut_in: bool, rel_speed_mps: float, hard_brake_rel_mps: float) -> str | None:
+    """경고가 나온 이유를 고른다 (화면 배너 문구용).
+
+    사용처: B(판단) 단계. FrameJudge.judge_frame()이 단계를 정한 뒤 호출하고, 결과를 B→C의 event에 넣는다.
+    입력: level 경고 단계, cut_in 끼어들기 여부, rel_speed_mps 가까워지는 속도(m/s),
+          hard_brake_rel_mps 이 속도 이상이면 급정거로 봄 (config)
+    출력: "cut_in" / "hard_brake" / "gap_short" 중 하나. "정상"이면 None
+    주의: 급정거는 브레이크등이 아니라 "가까워지는 속도가 큰 것"으로 판단한다.
+          이유가 겹치면 끼어들기 → 급정거 → 안전거리 부족 순서로 먼저 알린다.
+    """
+    if level == LEVELS[0]:
+        return None
+    if cut_in:
+        return "cut_in"
+    if rel_speed_mps >= hard_brake_rel_mps:
+        return "hard_brake"
+    return "gap_short"
